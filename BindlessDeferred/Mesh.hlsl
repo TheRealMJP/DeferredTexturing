@@ -36,20 +36,19 @@ ConstantBuffer<VSConstants> VSCBuffer : register(b0);
 ConstantBuffer<ShadingConstants> PSCBuffer : register(b0);
 ConstantBuffer<ShadowConstants> ShadowCBuffer : register(b1);
 ConstantBuffer<MatIndexConstants> MatIndexCBuffer : register(b2);
+ConstantBuffer<LightConstants> LightCBuffer : register(b3);
 
 //=================================================================================================
 // Resources
 //=================================================================================================
 Texture2DArray<float> SunShadowMap : register(t0);
 Texture2DArray<float> SpotLightShadowMap : register(t1);
-StructuredBuffer<float4x4> SpotLightShadowMatrices : register(t2);
-StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffer : register(t3);
-StructuredBuffer<Decal> DecalBuffer : register(t4);
-ByteAddressBuffer DecalClusterBuffer : register(t5);
-StructuredBuffer<SpotLight> SpotLightBuffer : register(t6);
-ByteAddressBuffer SpotLightClusterBuffer : register(t7);
+StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffer : register(t2);
+StructuredBuffer<Decal> DecalBuffer : register(t3);
+ByteAddressBuffer DecalClusterBuffer : register(t4);
+ByteAddressBuffer SpotLightClusterBuffer : register(t5);
 
-Texture2D<float4> MaterialTextures[NumMaterialTextures_] : register(t8);
+Texture2D<float4> MaterialTextures[NumMaterialTextures_] : register(t6);
 
 SamplerState AnisoSampler : register(s0);
 SamplerComparisonState ShadowSampler : register(s1);
@@ -166,16 +165,15 @@ PSOutputForward PSForward(in PSInput input)
     shadingInput.RoughnessMap = RoughnessMap.Sample(AnisoSampler, input.UV).x;
     shadingInput.MetallicMap = MetallicMap.Sample(AnisoSampler, input.UV).x;
 
-    shadingInput.SpotLightShadowMatrices = SpotLightShadowMatrices;
     shadingInput.DecalBuffer = DecalBuffer;
     shadingInput.DecalClusterBuffer = DecalClusterBuffer;
-    shadingInput.SpotLightBuffer = SpotLightBuffer;
     shadingInput.SpotLightClusterBuffer = SpotLightClusterBuffer;
 
     shadingInput.AnisoSampler = AnisoSampler;
 
     shadingInput.ShadingCBuffer = PSCBuffer;
     shadingInput.ShadowCBuffer = ShadowCBuffer;
+    shadingInput.LightCBuffer = LightCBuffer;
 
     float3 shadingResult = ShadePixel(shadingInput, SunShadowMap, SpotLightShadowMap, ShadowSampler);
 

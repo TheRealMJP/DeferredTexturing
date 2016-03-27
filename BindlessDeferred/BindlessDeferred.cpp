@@ -51,6 +51,19 @@ struct PickingData
     Float3 Normal;
 };
 
+enum DeferredRootParams
+{
+    Deferred_DeferredCBuffer,
+    Deferred_PSCBuffer,
+    Deferred_ShadowCBuffer,
+    Deferred_LightCBuffer,
+    Deferred_AppSettings,
+    Deferred_Descriptors,
+    Deferred_DecalDescriptors,
+
+    NumDeferredRootParams
+};
+
 // Returns true if a sphere intersects a capped cone defined by a direction, height, and angle
 static bool SphereConeIntersection(const Float3& coneTip, const Float3& coneDir, float coneHeight,
                                    float coneAngle, const Float3& sphereCenter, float sphereRadius)
@@ -166,6 +179,18 @@ void BindlessDeferred::Initialize()
 
         sbInit.Stride = sizeof(uint32);
         spotLightInstanceBuffer.Initialize(sbInit);
+    }
+
+    {
+        // Spot light and shadow bounds buffer (actually used as a constant buffer)
+        StructuredBufferInit sbInit;
+        sbInit.Stride = sizeof(LightConstants);
+        sbInit.NumElements = 1;
+        sbInit.Dynamic = false;
+        sbInit.Lifetime = BufferLifetime::Persistent;
+        sbInit.InitialState = D3D12_RESOURCE_STATE_COPY_DEST;
+
+        spotLightBuffer.Initialize(sbInit);
     }
 
     {
@@ -384,43 +409,49 @@ void BindlessDeferred::Initialize()
         decalTextureRanges[0].RegisterSpace = 1;
         decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[6] = {};
+        D3D12_ROOT_PARAMETER rootParameters[NumDeferredRootParams] = {};
 
         // DeferredCBuffer
-        rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[0].Descriptor.RegisterSpace = 0;
-        rootParameters[0].Descriptor.ShaderRegister = 2;
+        rootParameters[Deferred_DeferredCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_DeferredCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_DeferredCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_DeferredCBuffer].Descriptor.ShaderRegister = 2;
 
         // PSCBuffer
-        rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[1].Descriptor.RegisterSpace = 0;
-        rootParameters[1].Descriptor.ShaderRegister = 0;
+        rootParameters[Deferred_PSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_PSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_PSCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_PSCBuffer].Descriptor.ShaderRegister = 0;
 
         // ShadowCBuffer
-        rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[2].Descriptor.RegisterSpace = 0;
-        rootParameters[2].Descriptor.ShaderRegister = 1;
+        rootParameters[Deferred_ShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_ShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_ShadowCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_ShadowCBuffer].Descriptor.ShaderRegister = 1;
+
+        // LightCBuffer
+        rootParameters[Deferred_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_LightCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_LightCBuffer].Descriptor.ShaderRegister = 3;
 
         // AppSettings
-        rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[3].Descriptor.RegisterSpace = 0;
-        rootParameters[3].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[Deferred_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
 
-        // SRV descriptors
-        rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[4].DescriptorTable.pDescriptorRanges = descriptorRanges;
-        rootParameters[4].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
+        // Descriptors
+        rootParameters[Deferred_Descriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[Deferred_Descriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_Descriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
+        rootParameters[Deferred_Descriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
 
         // Decal texture descriptors
-        rootParameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[5].DescriptorTable.pDescriptorRanges = decalTextureRanges;
-        rootParameters[5].DescriptorTable.NumDescriptorRanges = 1;
+        rootParameters[Deferred_DecalDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[Deferred_DecalDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_DecalDescriptors].DescriptorTable.pDescriptorRanges = decalTextureRanges;
+        rootParameters[Deferred_DecalDescriptors].DescriptorTable.NumDescriptorRanges = 1;
 
         D3D12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
@@ -910,7 +941,7 @@ void BindlessDeferred::InitializeScene()
     }
 
     {
-        // Initialize the spotlight buffer
+        // Initialize the spotlight data used for rendering
         const uint64 numSpotLights = Min(currentModel->SpotLights().Size(), AppSettings::MaxSpotLights);
         spotLights.Init(numSpotLights);
 
@@ -922,18 +953,10 @@ void BindlessDeferred::InitializeScene()
             spotLight.Position = srcLight.Position;
             spotLight.Direction = -srcLight.Direction;
             spotLight.Intensity = srcLight.Intensity * 25.0f;
-            spotLight.AngularAttenuation = Float2(std::cos(srcLight.AngularAttenuation.x * 0.5f), std::cos(srcLight.AngularAttenuation.y * 0.5f));
+            spotLight.AngularAttenuationX = std::cos(srcLight.AngularAttenuation.x * 0.5f);
+            spotLight.AngularAttenuationY = std::cos(srcLight.AngularAttenuation.y * 0.5f);
             spotLight.Range = AppSettings::SpotLightRange;
         }
-
-        StructuredBufferInit sbInit;
-        sbInit.Stride = sizeof(SpotLight);
-        sbInit.NumElements = numSpotLights;
-        sbInit.Dynamic = false;
-        sbInit.Lifetime = BufferLifetime::Persistent;
-        sbInit.InitData = spotLights.Data();
-
-        spotLightBuffer.Initialize(sbInit);
 
         AppSettings::MaxLightClamp.SetValue(int32(numSpotLights));
     }
@@ -1035,6 +1058,12 @@ void BindlessDeferred::Render(const Timer& timer)
     if(AppSettings::RenderLights)
         meshRenderer.RenderSpotLightShadowMap(cmdList, camera);
 
+    // Update the light constant buffer
+    spotLightBuffer.InternalBuffer.UpdateData(spotLights.Data(), spotLights.MemorySize(), 0);
+    spotLightBuffer.InternalBuffer.UpdateData(meshRenderer.SpotLightShadowMatrices(), spotLights.Size() * sizeof(Float4x4),
+                                              sizeof(SpotLight) * AppSettings::MaxSpotLights);
+    spotLightBuffer.Transition(DX12::CmdList, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+
     if(AppSettings::RenderMode == RenderModes::ClusteredForward)
         RenderForward();
     else
@@ -1061,6 +1090,7 @@ void BindlessDeferred::Render(const Timer& timer)
 
     // Transition updatable resources back to copy dest state
     decalBuffer.Transition(DX12::CmdList, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
+    spotLightBuffer.Transition(DX12::CmdList, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_RESOURCE_STATE_COPY_DEST);
 }
 
 void BindlessDeferred::UpdateDecals(const Timer& timer)
@@ -1802,7 +1832,7 @@ void BindlessDeferred::RenderDeferred()
         deferredConstants.Data.RTSize = Float2(float(mainTarget.Width()), float(mainTarget.Height()));
         deferredConstants.Data.NumComputeTilesX = numComputeTilesX;
         deferredConstants.Upload();
-        deferredConstants.SetAsComputeRootParameter(cmdList, 0);
+        deferredConstants.SetAsComputeRootParameter(cmdList, Deferred_DeferredCBuffer);
 
         shadingConstants.Data.SunDirectionWS = AppSettings::SunDirection;
         shadingConstants.Data.SunIrradiance = skyCache.SunIrradiance;
@@ -1822,24 +1852,24 @@ void BindlessDeferred::RenderDeferred()
 
         shadingConstants.Data.SkySH = skyCache.SH;
         shadingConstants.Upload();
-        shadingConstants.SetAsComputeRootParameter(cmdList, 1);
+        shadingConstants.SetAsComputeRootParameter(cmdList, Deferred_PSCBuffer);
 
         ConstantBuffer<SunShadowConstants>& sunShadowConstants = meshRenderer.SunShadowConstantBuffer();
         sunShadowConstants.Upload();
-        sunShadowConstants.SetAsComputeRootParameter(cmdList, 2);
+        sunShadowConstants.SetAsComputeRootParameter(cmdList, Deferred_ShadowCBuffer);
 
-        AppSettings::BindCBufferCompute(cmdList, 3);
+        cmdList->SetComputeRootConstantBufferView(Deferred_LightCBuffer, spotLightBuffer.InternalBuffer.GPUAddress);
+
+        AppSettings::BindCBufferCompute(cmdList, Deferred_AppSettings);
 
         D3D12_CPU_DESCRIPTOR_HANDLE descriptors[] =
         {
             deferredTarget.UAV.CPUHandle,
             meshRenderer.SunShadowMap().SRV(),
             meshRenderer.SpotLightShadowMap().SRV(),
-            meshRenderer.SpotLightShadowMatrices().SRV(),
             meshRenderer.MaterialTextureIndicesBuffer().SRV(),
             decalBuffer.SRV(),
             decalClusterBuffer.SRV(),
-            spotLightBuffer.SRV(),
             spotLightClusterBuffer.SRV(),
             nonMsaaTileBuffer.SRV(),
             msaaTileBuffer.SRV(),
@@ -1871,14 +1901,14 @@ void BindlessDeferred::RenderDeferred()
         dstMaterialTextures.ptr += ArraySize_(descriptors) * DX12::SRVDescriptorSize;
         DX12::Device->CopyDescriptorsSimple(uint32(numMaterialTextures), dstMaterialTextures, srcMaterialTextures, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-        cmdList->SetComputeRootDescriptorTable(4, tableStart.GPUHandle);
+        cmdList->SetComputeRootDescriptorTable(Deferred_Descriptors, tableStart.GPUHandle);
 
         // Bind the decal textures
         D3D12_CPU_DESCRIPTOR_HANDLE decalDescriptors[AppSettings::NumDecalTextures] = { };
         for(uint64 i = 0; i < AppSettings::NumDecalTextures; ++i)
             decalDescriptors[i] = decalTextures[i].SRV.CPUHandle;
 
-        DX12::BindShaderResources(cmdList, 5, AppSettings::NumDecalTextures, decalDescriptors, CmdListMode::Compute);
+        DX12::BindShaderResources(cmdList, Deferred_DecalDescriptors, AppSettings::NumDecalTextures, decalDescriptors, CmdListMode::Compute);
 
         if(msaaEnabled)
             cmdList->ExecuteIndirect(deferredCmdSignature, 1, nonMsaaArgsBuffer.Resource(), 0, nullptr, 0);

@@ -26,13 +26,14 @@ static const uint64 SpotLightShadowMapSize = 1024;
 
 enum MainPassRootParams
 {
-    MainPassMatIndexCBuffer,
-    MainPassPSCBuffer,
-    MainPassShadowCBuffer,
-    MainPassAppSettings,
-    MainPassSRV,
-    MainPassDecals,
-    MainPassVSCBuffer,
+    MainPass_MatIndexCBuffer,
+    MainPass_PSCBuffer,
+    MainPass_ShadowCBuffer,
+    MainPass_LightCBuffer,
+    MainPass_AppSettings,
+    MainPass_SRV,
+    MainPass_Decals,
+    MainPass_VSCBuffer,
 
     NumMainPassRootParams,
 };
@@ -179,16 +180,6 @@ void MeshRenderer::Initialize(const Model* model_)
     spotLightShadowMap.MakeReadable(DX12::CmdList);
 
     {
-        // Spot light shadow matrix buffer
-        StructuredBufferInit sbInit;
-        sbInit.Stride = sizeof(Float4x4);
-        sbInit.NumElements = numSpotLights;
-        sbInit.Dynamic = true;
-        sbInit.Lifetime = BufferLifetime::Persistent;
-        spotLightShadowMatrices.Initialize(sbInit);
-    }
-
-    {
         // Create a structured buffer containing texture indices per-material
         const Array<MeshMaterial>& materials = model->Materials();
         const uint64 numMaterials = materials.Size();
@@ -229,50 +220,56 @@ void MeshRenderer::Initialize(const Model* model_)
         decalTextureRanges[0].RegisterSpace = 1;
         decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[7] = {};
+        D3D12_ROOT_PARAMETER rootParameters[NumMainPassRootParams] = {};
 
         // VSCBuffer
-        rootParameters[MainPassVSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[MainPassVSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        rootParameters[MainPassVSCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[MainPassVSCBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[MainPass_VSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_VSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        rootParameters[MainPass_VSCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_VSCBuffer].Descriptor.ShaderRegister = 0;
 
         // PSCBuffer
-        rootParameters[MainPassPSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[MainPassPSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPassPSCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[MainPassPSCBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[MainPass_PSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_PSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_PSCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_PSCBuffer].Descriptor.ShaderRegister = 0;
 
         // ShadowCBuffer
-        rootParameters[MainPassShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[MainPassShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPassShadowCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[MainPassShadowCBuffer].Descriptor.ShaderRegister = 1;
+        rootParameters[MainPass_ShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_ShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_ShadowCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_ShadowCBuffer].Descriptor.ShaderRegister = 1;
+
+        // LightCBuffer
+        rootParameters[MainPass_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_LightCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_LightCBuffer].Descriptor.ShaderRegister = 3;
 
         // AppSettings
-        rootParameters[MainPassAppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[MainPassAppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPassAppSettings].Descriptor.RegisterSpace = 0;
-        rootParameters[MainPassAppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[MainPass_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
 
         // MatIndexCBuffer
-        rootParameters[MainPassMatIndexCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        rootParameters[MainPassMatIndexCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPassMatIndexCBuffer].Constants.Num32BitValues = 1;
-        rootParameters[MainPassMatIndexCBuffer].Constants.RegisterSpace = 0;
-        rootParameters[MainPassMatIndexCBuffer].Constants.ShaderRegister = 2;
+        rootParameters[MainPass_MatIndexCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        rootParameters[MainPass_MatIndexCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_MatIndexCBuffer].Constants.Num32BitValues = 1;
+        rootParameters[MainPass_MatIndexCBuffer].Constants.RegisterSpace = 0;
+        rootParameters[MainPass_MatIndexCBuffer].Constants.ShaderRegister = 2;
 
         // SRV descriptors
-        rootParameters[MainPassSRV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[MainPassSRV].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPassSRV].DescriptorTable.pDescriptorRanges = srvRanges;
-        rootParameters[MainPassSRV].DescriptorTable.NumDescriptorRanges = 1;
+        rootParameters[MainPass_SRV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[MainPass_SRV].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_SRV].DescriptorTable.pDescriptorRanges = srvRanges;
+        rootParameters[MainPass_SRV].DescriptorTable.NumDescriptorRanges = 1;
 
         // Decal texture descriptors
-        rootParameters[MainPassDecals].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[MainPassDecals].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPassDecals].DescriptorTable.pDescriptorRanges = decalTextureRanges;
-        rootParameters[MainPassDecals].DescriptorTable.NumDescriptorRanges = 1;
+        rootParameters[MainPass_Decals].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[MainPass_Decals].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_Decals].DescriptorTable.pDescriptorRanges = decalTextureRanges;
+        rootParameters[MainPass_Decals].DescriptorTable.NumDescriptorRanges = 1;
 
         D3D12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0);
@@ -341,7 +338,6 @@ void MeshRenderer::Shutdown()
     DestroyPSOs();
     sunShadowMap.Shutdown();
     spotLightShadowMap.Shutdown();
-    spotLightShadowMatrices.Shutdown();
     materialTextureIndices.Shutdown();
     DX12::Release(mainPassRootSignature);
     DX12::Release(gBufferRootSignature);
@@ -466,7 +462,7 @@ void MeshRenderer::RenderMainPass(ID3D12GraphicsCommandList* cmdList, const Came
     meshVSConstants.Data.View = camera.ViewMatrix();
     meshVSConstants.Data.WorldViewProjection = world * camera.ViewProjectionMatrix();
     meshVSConstants.Upload();
-    meshVSConstants.SetAsGfxRootParameter(cmdList, MainPassVSCBuffer);
+    meshVSConstants.SetAsGfxRootParameter(cmdList, MainPass_VSCBuffer);
 
     meshPSConstants.Data.SunDirectionWS = AppSettings::SunDirection;
     meshPSConstants.Data.SunIrradiance = mainPassData.SkyCache->SunIrradiance;
@@ -486,22 +482,22 @@ void MeshRenderer::RenderMainPass(ID3D12GraphicsCommandList* cmdList, const Came
 
     meshPSConstants.Data.SkySH = mainPassData.SkyCache->SH;
     meshPSConstants.Upload();
-    meshPSConstants.SetAsGfxRootParameter(cmdList, MainPassPSCBuffer);
+    meshPSConstants.SetAsGfxRootParameter(cmdList, MainPass_PSCBuffer);
 
     sunShadowConstants.Upload();
-    sunShadowConstants.SetAsGfxRootParameter(cmdList, MainPassShadowCBuffer);
+    sunShadowConstants.SetAsGfxRootParameter(cmdList, MainPass_ShadowCBuffer);
 
-    AppSettings::BindCBufferGfx(cmdList, MainPassAppSettings);
+    cmdList->SetGraphicsRootConstantBufferView(MainPass_LightCBuffer, mainPassData.SpotLightBuffer->InternalBuffer.GPUAddress);
+
+    AppSettings::BindCBufferGfx(cmdList, MainPass_AppSettings);
 
     D3D12_CPU_DESCRIPTOR_HANDLE psSRVs[] =
     {
         sunShadowMap.SRV(),
         spotLightShadowMap.SRV(),
-        spotLightShadowMatrices.SRV(),
         materialTextureIndices.SRV(),
         mainPassData.DecalBuffer->SRV(),
         mainPassData.DecalClusterBuffer->SRV(),
-        mainPassData.SpotLightBuffer->SRV(),
         mainPassData.SpotLightClusterBuffer->SRV(),
     };
 
@@ -524,14 +520,14 @@ void MeshRenderer::RenderMainPass(ID3D12GraphicsCommandList* cmdList, const Came
     dstMaterialTextures.ptr += ArraySize_(psSRVs) * DX12::SRVDescriptorSize;
     DX12::Device->CopyDescriptorsSimple(uint32(numMaterialTextures), dstMaterialTextures, srcMaterialTextures, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-    cmdList->SetGraphicsRootDescriptorTable(MainPassSRV, tableStart.GPUHandle);
+    cmdList->SetGraphicsRootDescriptorTable(MainPass_SRV, tableStart.GPUHandle);
 
     // Bind the decal textures
     D3D12_CPU_DESCRIPTOR_HANDLE decalDescriptors[AppSettings::NumDecalTextures] = { };
     for(uint64 i = 0; i < AppSettings::NumDecalTextures; ++i)
         decalDescriptors[i] = mainPassData.DecalTextures[i].SRV.CPUHandle;
 
-    DX12::BindShaderResources(cmdList, MainPassDecals, AppSettings::NumDecalTextures, decalDescriptors);
+    DX12::BindShaderResources(cmdList, MainPass_Decals, AppSettings::NumDecalTextures, decalDescriptors);
 
     // Bind vertices and indices
     D3D12_VERTEX_BUFFER_VIEW vbView = model->VertexBuffer().VBView();
@@ -552,7 +548,7 @@ void MeshRenderer::RenderMainPass(ID3D12GraphicsCommandList* cmdList, const Came
             const MeshPart& part = mesh.MeshParts()[partIdx];
             if(part.MaterialIdx != currMaterial)
             {
-                cmdList->SetGraphicsRoot32BitConstant(MainPassMatIndexCBuffer, part.MaterialIdx, 0);
+                cmdList->SetGraphicsRoot32BitConstant(MainPass_MatIndexCBuffer, part.MaterialIdx, 0);
                 currMaterial = part.MaterialIdx;
             }
             cmdList->DrawIndexedInstanced(part.IndexCount, 1, mesh.IndexOffset() + part.IndexStart, mesh.VertexOffset(), 0);
@@ -715,8 +711,6 @@ void MeshRenderer::RenderSpotLightShadowMap(ID3D12GraphicsCommandList* cmdList, 
     CPUProfileBlock cpuProfileBlock("Spot Light Shadow Map Rendering");
     ProfileBlock profileBlock(cmdList, "Spot Light Shadow Map Rendering");
 
-    Float4x4* shadowMatrices = spotLightShadowMatrices.Map<Float4x4>();
-
     spotLightShadowMap.MakeWritable(cmdList);
 
     const Array<ModelSpotLight>& spotLights = model->SpotLights();
@@ -743,7 +737,7 @@ void MeshRenderer::RenderSpotLightShadowMap(ID3D12GraphicsCommandList* cmdList, 
         RenderSpotLightShadowDepth(cmdList, shadowCamera);
 
         Float4x4 shadowMatrix = shadowCamera.ViewProjectionMatrix() * ShadowScaleOffsetMatrix;
-        shadowMatrices[i] = Float4x4::Transpose(shadowMatrix);
+        spotLightShadowMatrices[i] = Float4x4::Transpose(shadowMatrix);
     }
 
     spotLightShadowMap.MakeReadable(cmdList);

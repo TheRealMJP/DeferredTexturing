@@ -89,7 +89,7 @@ public:
 
     const DepthBuffer& SunShadowMap() const { return sunShadowMap; }
     const DepthBuffer& SpotLightShadowMap() const { return spotLightShadowMap; }
-    const StructuredBuffer& SpotLightShadowMatrices() const { return spotLightShadowMatrices; }
+    const Float4x4* SpotLightShadowMatrices() const { return spotLightShadowMatrices; }
     const StructuredBuffer& MaterialTextureIndicesBuffer() const { return materialTextureIndices; }
     ConstantBuffer<SunShadowConstants>& SunShadowConstantBuffer() { return sunShadowConstants; }
 
@@ -102,7 +102,7 @@ protected:
 
     DepthBuffer sunShadowMap;
     DepthBuffer spotLightShadowMap;
-    StructuredBuffer spotLightShadowMatrices;
+    Float4x4 spotLightShadowMatrices[AppSettings::MaxSpotLights];
 
     StructuredBuffer materialTextureIndices;
 

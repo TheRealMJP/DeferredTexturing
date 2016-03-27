@@ -165,6 +165,12 @@ protected:
         uint32 NumXYTiles;
     };
 
+    struct LightConstants
+    {
+        SpotLight Lights[AppSettings::MaxSpotLights];
+        Float4x4 ShadowMatrices[AppSettings::MaxSpotLights];
+    };
+
     ConstantBuffer<ClusterConstants> clusterConstants;
     ConstantBuffer<MSAAMaskConstants> msaaMaskConstants;
     ConstantBuffer<DeferredConstants> deferredConstants;

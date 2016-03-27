@@ -50,9 +50,10 @@ struct Decal
 struct SpotLight
 {
     float3 Position;
+    float AngularAttenuationX;
     float3 Direction;
+    float AngularAttenuationY;
     float3 Intensity;
-    float2 AngularAttenuation;
     float Range;
 };
 

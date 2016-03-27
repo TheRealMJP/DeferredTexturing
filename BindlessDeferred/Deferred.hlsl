@@ -29,6 +29,7 @@ struct DeferredConstants
 ConstantBuffer<ShadingConstants> PSCBuffer : register(b0);
 ConstantBuffer<ShadowConstants> ShadowCBuffer : register(b1);
 ConstantBuffer<DeferredConstants> DeferredCBuffer : register(b2);
+ConstantBuffer<LightConstants> LightCBuffer : register(b3);
 
 static const uint ThreadGroupSize = DeferredTileSize * DeferredTileSize;
 
@@ -44,31 +45,29 @@ struct TileMSAAMask
 
 Texture2DArray<float> SunShadowMap : register(t0);
 Texture2DArray<float> SpotLightShadowMap : register(t1);
-StructuredBuffer<float4x4> SpotLightShadowMatrices : register(t2);
-StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffer : register(t3);
-StructuredBuffer<Decal> DecalBuffer : register(t4);
-ByteAddressBuffer DecalClusterBuffer : register(t5);
-StructuredBuffer<SpotLight> SpotLightBuffer : register(t6);
-ByteAddressBuffer SpotLightClusterBuffer : register(t7);
-StructuredBuffer<uint> NonMSAATiles : register(t8);
-StructuredBuffer<uint> MSAATiles : register(t9);
+StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffer : register(t2);
+StructuredBuffer<Decal> DecalBuffer : register(t3);
+ByteAddressBuffer DecalClusterBuffer : register(t4);
+ByteAddressBuffer SpotLightClusterBuffer : register(t5);
+StructuredBuffer<uint> NonMSAATiles : register(t6);
+StructuredBuffer<uint> MSAATiles : register(t7);
 #if MSAA_
-    Texture2DMS<float4> TangentFrameMap : register(t10);
-    Texture2DMS<float4> UVMap : register(t11);
-    Texture2DMS<float4> UVGradientMap : register(t12);
-    Texture2DMS<uint> MaterialIDMap : register(t13);
-    Texture2DMS<float> DepthMap : register(t14);
-    Texture2DMS<float4> SkyMap : register(t15);
-    StructuredBuffer<TileMSAAMask> MSAAMaskBuffer : register(t16);
+    Texture2DMS<float4> TangentFrameMap : register(t8);
+    Texture2DMS<float4> UVMap : register(t9);
+    Texture2DMS<float4> UVGradientMap : register(t10);
+    Texture2DMS<uint> MaterialIDMap : register(t11);
+    Texture2DMS<float> DepthMap : register(t12);
+    Texture2DMS<float4> SkyMap : register(t13);
+    StructuredBuffer<TileMSAAMask> MSAAMaskBuffer : register(t14);
 #else
-    Texture2D<float4> TangentFrameMap : register(t10);
-    Texture2D<float4> UVMap : register(t11);
-    Texture2D<float4> UVGradientMap : register(t12);
-    Texture2D<uint> MaterialIDMap : register(t13);
-    Texture2D<float> DepthMap : register(t14);
+    Texture2D<float4> TangentFrameMap : register(t8);
+    Texture2D<float4> UVMap : register(t9);
+    Texture2D<float4> UVGradientMap : register(t10);
+    Texture2D<uint> MaterialIDMap : register(t11);
+    Texture2D<float> DepthMap : register(t12);
 #endif
 
-Texture2D<float4> MaterialTextures[NumMaterialTextures_] : register(t17);
+Texture2D<float4> MaterialTextures[NumMaterialTextures_] : register(t15);
 
 SamplerState AnisoSampler : register(s0);
 SamplerComparisonState ShadowSampler : register(s1);
@@ -219,16 +218,15 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
     shadingInput.RoughnessMap = RoughnessMap.SampleGrad(AnisoSampler, uv, uvDX, uvDY).x;
     shadingInput.MetallicMap = MetallicMap.SampleGrad(AnisoSampler, uv, uvDX, uvDY).x;
 
-    shadingInput.SpotLightShadowMatrices = SpotLightShadowMatrices;
     shadingInput.DecalBuffer = DecalBuffer;
     shadingInput.DecalClusterBuffer = DecalClusterBuffer;
-    shadingInput.SpotLightBuffer = SpotLightBuffer;
     shadingInput.SpotLightClusterBuffer = SpotLightClusterBuffer;
 
     shadingInput.AnisoSampler = AnisoSampler;
 
     shadingInput.ShadingCBuffer = PSCBuffer;
     shadingInput.ShadowCBuffer = ShadowCBuffer;
+    shadingInput.LightCBuffer = LightCBuffer;
 
     float3 shadingResult = ShadePixel(shadingInput, SunShadowMap, SpotLightShadowMap, ShadowSampler);
 

@@ -46,6 +46,12 @@ struct ShadingConstants
     SH9Color SkySH;
 };
 
+struct LightConstants
+{
+    SpotLight Lights[MaxSpotLights];
+    float4x4 ShadowMatrices[MaxSpotLights];
+};
+
 struct ShadingInput
 {
     uint2 PositionSS;
@@ -60,16 +66,15 @@ struct ShadingInput
     float RoughnessMap;
     float MetallicMap;
 
-    StructuredBuffer<float4x4> SpotLightShadowMatrices;
     StructuredBuffer<Decal> DecalBuffer;
     ByteAddressBuffer DecalClusterBuffer;
-    StructuredBuffer<SpotLight> SpotLightBuffer;
     ByteAddressBuffer SpotLightClusterBuffer;
 
     SamplerState AnisoSampler;
 
     ShadingConstants ShadingCBuffer;
     ShadowConstants ShadowCBuffer;
+    LightConstants LightCBuffer;
 };
 
 Texture2D<float4> DecalTextures[NumDecalTextures] : register(t0, space1);
@@ -287,13 +292,13 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
                 uint bitIdx = firstbitlow(clusterElemMask);
                 clusterElemMask &= ~(1 << bitIdx);
                 uint spotLightIdx = bitIdx + (elemIdx * 32);
-                SpotLight spotLight = input.SpotLightBuffer[spotLightIdx];
+                SpotLight spotLight = input.LightCBuffer.Lights[spotLightIdx];
 
                 float3 surfaceToLight = spotLight.Position - positionWS;
                 float distanceToLight = length(surfaceToLight);
                 surfaceToLight /= distanceToLight;
                 float angleFactor = saturate(dot(surfaceToLight, spotLight.Direction));
-                float angularAttenuation = smoothstep(spotLight.AngularAttenuation.y, spotLight.AngularAttenuation.x, angleFactor);
+                float angularAttenuation = smoothstep(spotLight.AngularAttenuationY, spotLight.AngularAttenuationX, angleFactor);
 
                 if(angularAttenuation > 0.0f)
                 {
@@ -304,7 +309,7 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
 
                     // We have to use explicit gradients for spotlight shadows, since the looping/branching is non-uniform
                     float spotLightVisibility = SpotLightShadowVisibility(positionWS, positionNeighborX, positionNeighborY,
-                                                                          input.SpotLightShadowMatrices[spotLightIdx],
+                                                                          input.LightCBuffer.ShadowMatrices[spotLightIdx],
                                                                           spotLightIdx, SpotLightShadowMap, ShadowSampler);
 
                     output += CalcLighting(normalWS, surfaceToLight, intensity, diffuseAlbedo, specularAlbedo,
