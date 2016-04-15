@@ -395,8 +395,8 @@ void ConvertAndReadbackTexture(const Texture& texture, DXGI_FORMAT outputFormat,
     D3D12_CPU_DESCRIPTOR_HANDLE descriptors[2] = { texture.SRV.CPUHandle, convertBuffer.UAV() };
     BindShaderResources(convertCmdList, 0, ArraySize_(descriptors), descriptors, CmdListMode::Compute, ShaderResourceType::SRV_UAV_CBV);
 
-    uint32 dispatchX = DispatchSize(convertTGSize, texture.Width);
-    uint32 dispatchY = DispatchSize(convertTGSize, texture.Height);
+    uint32 dispatchX = DispatchSize(texture.Width, convertTGSize);
+    uint32 dispatchY = DispatchSize(texture.Height, convertTGSize);
     uint32 dispatchZ = texture.ArraySize;
     convertCmdList->Dispatch(dispatchX, dispatchY, dispatchZ);
 
