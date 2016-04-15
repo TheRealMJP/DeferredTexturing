@@ -86,7 +86,7 @@ static bool SphereConeIntersection(const Float3& coneTip, const Float3& coneDir,
 
 BindlessDeferred::BindlessDeferred() :  App(L"Bindless Deferred Texturing")
 {
-    minFeatureLevel = D3D_FEATURE_LEVEL_12_0;
+    minFeatureLevel = D3D_FEATURE_LEVEL_11_1;
     globalHelpText = "Bindless Deferred Texturing\n\n"
                      "Controls:\n\n"
                      "Use W/S/A/D/Q/E to move the camera, and hold right-click while dragging the mouse to rotate.";
