@@ -45,7 +45,7 @@ void Profiler::Initialize()
 {
     Shutdown();
 
-    enableGPUProfiling = SUCCEEDED(DX12::Device->SetStablePowerState(TRUE));
+    enableGPUProfiling = true;
 
     if(enableGPUProfiling)
     {
