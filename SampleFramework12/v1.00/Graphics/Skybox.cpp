@@ -351,7 +351,7 @@ void Skybox::Shutdown()
     DX12::Release(rootSignature);
 }
 
-void Skybox::CreatePSOs(DXGI_FORMAT rtFormat, uint32 numMSAASamples)
+void Skybox::CreatePSOs(DXGI_FORMAT rtFormat, DXGI_FORMAT depthFormat, uint32 numMSAASamples)
 {
     D3D12_INPUT_ELEMENT_DESC inputElements[] =
     {
@@ -369,6 +369,7 @@ void Skybox::CreatePSOs(DXGI_FORMAT rtFormat, uint32 numMSAASamples)
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = 1;
     psoDesc.RTVFormats[0] = rtFormat;
+    psoDesc.DSVFormat = depthFormat;
     psoDesc.SampleDesc.Count = numMSAASamples;
     psoDesc.SampleDesc.Quality = numMSAASamples > 1 ? DX12::StandardMSAAPattern : 0;
     psoDesc.InputLayout.pInputElementDescs = inputElements;

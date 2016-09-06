@@ -63,7 +63,7 @@ public:
     void Initialize();
     void Shutdown();
 
-    void CreatePSOs(DXGI_FORMAT rtFormat, uint32 numMSAASamples);
+    void CreatePSOs(DXGI_FORMAT rtFormat, DXGI_FORMAT depthFormat, uint32 numMSAASamples);
     void DestroyPSOs();
 
     void RenderEnvironmentMap(ID3D12GraphicsCommandList* cmdList,

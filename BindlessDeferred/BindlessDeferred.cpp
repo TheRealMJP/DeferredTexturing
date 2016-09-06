@@ -675,7 +675,7 @@ void BindlessDeferred::CreatePSOs()
     DXGI_FORMAT gBufferFormats[] = { tangentFrameTarget.Format(), uvTarget.Format(), materialIDTarget.Format(), uvGradientsTarget.Format() };
     uint64 numGBuffers = AppSettings::ComputeUVGradients ? ArraySize_(gBufferFormats) - 1 : ArraySize_(gBufferFormats);
     meshRenderer.CreatePSOs(mainTarget.Texture.Format, depthBuffer.DSVFormat, gBufferFormats, numGBuffers, mainTarget.MSAASamples);
-    skybox.CreatePSOs(mainTarget.Texture.Format, mainTarget.MSAASamples);
+    skybox.CreatePSOs(mainTarget.Texture.Format, depthBuffer.DSVFormat, mainTarget.MSAASamples);
     postProcessor.CreatePSOs();
 
     {
@@ -843,7 +843,8 @@ void BindlessDeferred::CreateRenderTargets()
         deferredMSAATarget.Initialize(deferredWidth, deferredHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 1, true);
     }
 
-    depthBuffer.Initialize(width, height, DXGI_FORMAT_D24_UNORM_S8_UINT, NumSamples, 1, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    depthBuffer.Initialize(width, height, DXGI_FORMAT_D32_FLOAT, NumSamples, 1, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ);
+    depthBuffer.Resource()->SetName(L"Main Depth Buffer");
 
     AppSettings::NumXTiles = (width + (AppSettings::ClusterTileSize - 1)) / AppSettings::ClusterTileSize;
     AppSettings::NumYTiles = (height + (AppSettings::ClusterTileSize - 1)) / AppSettings::ClusterTileSize;
@@ -1476,7 +1477,7 @@ void BindlessDeferred::RenderForward()
         barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barriers[2].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
         barriers[2].Transition.pResource = depthBuffer.Resource();
-        barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
         barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
         barriers[2].Transition.Subresource = 0;
 
@@ -1537,7 +1538,7 @@ void BindlessDeferred::RenderForward()
             barriers[2].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             barriers[2].Transition.pResource = depthBuffer.Resource();
             barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
             barriers[2].Transition.Subresource = 0;
 
             cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
@@ -1557,7 +1558,7 @@ void BindlessDeferred::RenderDeferred()
         barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
         barriers[0].Transition.pResource = depthBuffer.Resource();
-        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
         barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
         barriers[0].Transition.Subresource = 0;
 
@@ -1625,7 +1626,7 @@ void BindlessDeferred::RenderDeferred()
         barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
         barriers[0].Transition.pResource = depthBuffer.Resource();
         barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
         barriers[0].Transition.Subresource = 0;
 
         barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
