@@ -524,12 +524,17 @@ void SetViewport(ID3D12GraphicsCommandList* cmdList, uint64 width, uint64 height
     cmdList->RSSetScissorRects(1, &scissorRect);
 }
 
-void CreateRootSignature(ID3D12RootSignature** rootSignature, const D3D12_ROOT_SIGNATURE_DESC& desc)
+void CreateRootSignature(ID3D12RootSignature** rootSignature, const D3D12_ROOT_SIGNATURE_DESC1& desc)
 {
+    D3D12_VERSIONED_ROOT_SIGNATURE_DESC versionedDesc = { };
+    versionedDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    versionedDesc.Desc_1_1 = desc;
+
     ID3DBlobPtr signature;
     ID3DBlobPtr error;
-    HRESULT hr = D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
-    if(FAILED(hr)) {
+    HRESULT hr = D3D12SerializeVersionedRootSignature(&versionedDesc, &signature, &error);
+    if(FAILED(hr)) 
+    {
         const char* errString = error ? reinterpret_cast<const char*>(error->GetBufferPointer()) : "";
 
         #if UseAsserts_

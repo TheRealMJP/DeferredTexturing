@@ -35,7 +35,7 @@ static ID3D12GraphicsCommandList* readbackCmdList = nullptr;
 static ID3D12CommandAllocator* readbackCmdAllocator = nullptr;
 static Fence readbackFence;
 
-static const uint64 UploadBufferSize = 16 * 1024 * 1024;
+static const uint64 UploadBufferSize = 32 * 1024 * 1024;
 static const uint64 MaxUploadSubmissions = 16;
 static ID3D12GraphicsCommandList* UploadCmdList = nullptr;
 static ID3D12CommandQueue* UploadCmdQueue = nullptr;
@@ -224,7 +224,7 @@ void Initialize_Upload()
     convertArrayCS = CompileFromFile(shaderPath.c_str(), "DecodeTextureArrayCS", ShaderType::Compute, ShaderProfile::SM51, opts);
 
     {
-        D3D12_DESCRIPTOR_RANGE ranges[2] = {};
+        D3D12_DESCRIPTOR_RANGE1 ranges[2] = {};
         ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         ranges[0].NumDescriptors = 1;
         ranges[0].BaseShaderRegister = 0;
@@ -237,13 +237,13 @@ void Initialize_Upload()
         ranges[1].RegisterSpace = 0;
         ranges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[1] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[1] = {};
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         rootParameters[0].DescriptorTable.pDescriptorRanges = ranges;
         rootParameters[0].DescriptorTable.NumDescriptorRanges = ArraySize_(ranges);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -381,11 +381,10 @@ void ConvertAndReadbackTexture(const Texture& texture, DXGI_FORMAT outputFormat,
     init.Format = outputFormat;
     init.NumElements = texture.Width * texture.Height * texture.ArraySize;
     init.CreateUAV = true;
+    init.InitialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
     FormattedBuffer convertBuffer;
     convertBuffer.Initialize(init);
-
-    convertBuffer.Transition(convertCmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
     // Run the conversion compute shader
     DX12::SetDescriptorHeaps(convertCmdList);
@@ -400,7 +399,7 @@ void ConvertAndReadbackTexture(const Texture& texture, DXGI_FORMAT outputFormat,
     uint32 dispatchZ = texture.ArraySize;
     convertCmdList->Dispatch(dispatchX, dispatchY, dispatchZ);
 
-    convertBuffer.Transition(convertCmdList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    convertBuffer.Transition(convertCmdList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
     // Execute the conversion command list and signal a fence
     DXCall(convertCmdList->Close());

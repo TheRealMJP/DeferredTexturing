@@ -88,7 +88,7 @@ typedef uint32_t bool32;
 #endif
 
 #include <dxgi.h>
-#include <dxgi1_4.h>
+#include <dxgi1_5.h>
 #include <D3Dcompiler.h>
 #include <d3d12.h>
 #include <pix.h>

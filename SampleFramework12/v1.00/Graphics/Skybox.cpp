@@ -266,14 +266,14 @@ void Skybox::Initialize()
 
     {
         // Make a root signature
-        D3D12_DESCRIPTOR_RANGE srvRanges[1] = { };
+        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = { };
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         srvRanges[0].NumDescriptors = 1;
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[3] = { };
+        D3D12_ROOT_PARAMETER1 rootParameters[3] = { };
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         rootParameters[0].DescriptorTable.pDescriptorRanges = srvRanges;
@@ -292,7 +292,7 @@ void Skybox::Initialize()
         D3D12_STATIC_SAMPLER_DESC staticSamplers[1] = { };
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::LinearClamp);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = { };
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = { };
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 1;

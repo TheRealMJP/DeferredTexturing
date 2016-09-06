@@ -206,21 +206,21 @@ void MeshRenderer::Initialize(const Model* model_)
 
     {
         // Main pass root signature
-        D3D12_DESCRIPTOR_RANGE srvRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         srvRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_DESCRIPTOR_RANGE decalTextureRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 decalTextureRanges[1] = {};
         decalTextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         decalTextureRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
         decalTextureRanges[0].BaseShaderRegister = 0;
         decalTextureRanges[0].RegisterSpace = 1;
         decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[NumMainPassRootParams] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[NumMainPassRootParams] = {};
 
         // VSCBuffer
         rootParameters[MainPass_VSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -275,7 +275,7 @@ void MeshRenderer::Initialize(const Model* model_)
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0);
         staticSamplers[1] = DX12::GetStaticSamplerState(SamplerState::ShadowMapPCF, 1);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = ArraySize_(staticSamplers);
@@ -287,7 +287,7 @@ void MeshRenderer::Initialize(const Model* model_)
 
     {
         // G-Buffer root signature
-        D3D12_ROOT_PARAMETER rootParameters[2] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[2] = {};
 
         // VSCBuffer
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -302,7 +302,7 @@ void MeshRenderer::Initialize(const Model* model_)
         rootParameters[1].Constants.RegisterSpace = 0;
         rootParameters[1].Constants.ShaderRegister = 2;
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 0;
@@ -314,7 +314,7 @@ void MeshRenderer::Initialize(const Model* model_)
 
     {
         // Depth only root signature
-        D3D12_ROOT_PARAMETER rootParameters[1] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[1] = {};
 
         // VSCBuffer
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -322,7 +322,7 @@ void MeshRenderer::Initialize(const Model* model_)
         rootParameters[0].Descriptor.RegisterSpace = 0;
         rootParameters[0].Descriptor.ShaderRegister = 0;
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 0;

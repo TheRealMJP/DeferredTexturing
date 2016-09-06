@@ -137,7 +137,7 @@ void Initialize(D3D_FEATURE_LEVEL minFeatureLevel)
     DXCall(CmdAllocators[CurrFrameIdx]->Reset());
     DXCall(CmdList->Reset(CmdAllocators[CurrFrameIdx], nullptr));
 
-    FrameFence.Init(uint64(-1));
+    FrameFence.Init(0);
 
     Initialize_Upload();
     Initialize_Helpers();
@@ -193,7 +193,7 @@ void BeginFrame()
     SetDescriptorHeaps(CmdList);
 }
 
-void EndFrame(IDXGISwapChain3* swapChain, uint32 syncIntervals)
+void EndFrame(IDXGISwapChain4* swapChain, uint32 syncIntervals)
 {
     Assert_(Device);
 
@@ -202,11 +202,11 @@ void EndFrame(IDXGISwapChain3* swapChain, uint32 syncIntervals)
     EndFrame_Upload();
 
     ID3D12CommandList* commandLists[] = { CmdList };
-    GfxQueue->ExecuteCommandLists(ArraySize_(commandLists), commandLists);
+    GfxQueue->ExecuteCommandLists(ArraySize_(commandLists), commandLists);    
 
     // Present the frame.
     if(swapChain)
-        DXCall(swapChain->Present(syncIntervals, 0));
+        DXCall(swapChain->Present(syncIntervals, syncIntervals == 0 ? DXGI_PRESENT_ALLOW_TEARING : 0));
 
     ++CurrentCPUFrame;
 

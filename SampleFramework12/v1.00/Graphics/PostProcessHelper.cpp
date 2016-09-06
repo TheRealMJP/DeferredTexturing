@@ -41,14 +41,14 @@ void PostProcessHelper::Initialize()
     fullScreenTriVS = CompileFromFile(fullScreenTriPath.c_str(), "FullScreenTriangleVS", ShaderType::Vertex, ShaderProfile::SM51);
 
     {
-        D3D12_DESCRIPTOR_RANGE srvRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         srvRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[2] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[2] = {};
 
         // AppSettings
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -68,7 +68,7 @@ void PostProcessHelper::Initialize()
         staticSamplers[2] = DX12::GetStaticSamplerState(SamplerState::Linear, 2);
         staticSamplers[3] = DX12::GetStaticSamplerState(SamplerState::LinearBorder, 3);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = ArraySize_(staticSamplers);

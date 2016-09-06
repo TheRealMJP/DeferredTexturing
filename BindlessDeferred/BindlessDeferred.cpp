@@ -304,21 +304,21 @@ void BindlessDeferred::Initialize()
 
     {
         // Clustering root signature
-        D3D12_DESCRIPTOR_RANGE srvRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         srvRanges[0].NumDescriptors = 3;
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_DESCRIPTOR_RANGE uavRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 uavRanges[1] = {};
         uavRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         uavRanges[0].NumDescriptors = 1;
         uavRanges[0].BaseShaderRegister = 0;
         uavRanges[0].RegisterSpace = 0;
         uavRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[4] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[4] = {};
 
         // CBuffer
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -344,7 +344,7 @@ void BindlessDeferred::Initialize()
         rootParameters[3].DescriptorTable.pDescriptorRanges = uavRanges;
         rootParameters[3].DescriptorTable.NumDescriptorRanges = ArraySize_(uavRanges);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 0;
@@ -356,7 +356,7 @@ void BindlessDeferred::Initialize()
 
     {
         // Picking root signature
-        D3D12_DESCRIPTOR_RANGE descriptorRanges[2] = {};
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
         descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         descriptorRanges[0].NumDescriptors = 2;
         descriptorRanges[0].BaseShaderRegister = 0;
@@ -369,7 +369,7 @@ void BindlessDeferred::Initialize()
         descriptorRanges[1].RegisterSpace = 0;
         descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[2] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[2] = {};
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         rootParameters[0].Descriptor.RegisterSpace = 0;
@@ -380,7 +380,7 @@ void BindlessDeferred::Initialize()
         rootParameters[1].DescriptorTable.pDescriptorRanges = descriptorRanges;
         rootParameters[1].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 0;
@@ -392,7 +392,7 @@ void BindlessDeferred::Initialize()
 
      {
         // Deferred root signature
-        D3D12_DESCRIPTOR_RANGE descriptorRanges[2] = {};
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
         descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         descriptorRanges[0].NumDescriptors = 1;
         descriptorRanges[0].BaseShaderRegister = 0;
@@ -405,14 +405,14 @@ void BindlessDeferred::Initialize()
         descriptorRanges[1].RegisterSpace = 0;
         descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_DESCRIPTOR_RANGE decalTextureRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 decalTextureRanges[1] = {};
         decalTextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         decalTextureRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
         decalTextureRanges[0].BaseShaderRegister = 0;
         decalTextureRanges[0].RegisterSpace = 1;
         decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[NumDeferredRootParams] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[NumDeferredRootParams] = {};
 
         // DeferredCBuffer
         rootParameters[Deferred_DeferredCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -460,7 +460,7 @@ void BindlessDeferred::Initialize()
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
         staticSamplers[1] = DX12::GetStaticSamplerState(SamplerState::ShadowMapPCF, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = ArraySize_(staticSamplers);
@@ -483,7 +483,7 @@ void BindlessDeferred::Initialize()
 
     {
         // MSAA mask root signature
-        D3D12_DESCRIPTOR_RANGE descriptorRanges[2] = {};
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
         descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         descriptorRanges[0].NumDescriptors = 2;
         descriptorRanges[0].BaseShaderRegister = 0;
@@ -496,7 +496,7 @@ void BindlessDeferred::Initialize()
         descriptorRanges[1].RegisterSpace = 0;
         descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[3] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[3] = {};
 
         // MSAAMaskCBuffer
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -516,7 +516,7 @@ void BindlessDeferred::Initialize()
         rootParameters[2].DescriptorTable.pDescriptorRanges = descriptorRanges;
         rootParameters[2].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 0;
@@ -528,14 +528,14 @@ void BindlessDeferred::Initialize()
 
     {
         // Resolve root signature
-        D3D12_DESCRIPTOR_RANGE srvRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         srvRanges[0].NumDescriptors = 1;
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[3] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[3] = {};
 
         // ResolveCBuffer
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -556,7 +556,7 @@ void BindlessDeferred::Initialize()
         rootParameters[2].DescriptorTable.pDescriptorRanges = srvRanges;
         rootParameters[2].DescriptorTable.NumDescriptorRanges = ArraySize_(srvRanges);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 0;
@@ -568,14 +568,14 @@ void BindlessDeferred::Initialize()
 
     {
         // Cluster visualization root signature
-        D3D12_DESCRIPTOR_RANGE srvRanges[1] = {};
+        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         srvRanges[0].NumDescriptors = 2;
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[3] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[3] = {};
 
         // CBuffer
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -595,7 +595,7 @@ void BindlessDeferred::Initialize()
         rootParameters[2].DescriptorTable.pDescriptorRanges = srvRanges;
         rootParameters[2].DescriptorTable.NumDescriptorRanges = ArraySize_(srvRanges);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = 0;

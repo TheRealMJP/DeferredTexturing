@@ -77,6 +77,7 @@ void SwapChain::Initialize(HWND outputWindow)
     swapChainDesc.OutputWindow = outputWindow;
     swapChainDesc.SampleDesc.Count = 1;
     swapChainDesc.Windowed = TRUE;
+    swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
     IDXGISwapChain* tempSwapChain = nullptr;
     DXCall(DX12::Factory->CreateSwapChain(DX12::GfxQueue, &swapChainDesc, &tempSwapChain));

@@ -53,14 +53,14 @@ void SpriteRenderer::Initialize()
 
     {
         // Make the root signature
-        D3D12_DESCRIPTOR_RANGE ranges[1] = { };
+        D3D12_DESCRIPTOR_RANGE1 ranges[1] = { };
         ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         ranges[0].NumDescriptors = 2;
         ranges[0].BaseShaderRegister = 0;
         ranges[0].RegisterSpace = 0;
         ranges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER rootParameters[2] = { };
+        D3D12_ROOT_PARAMETER1 rootParameters[2] = { };
         rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         rootParameters[0].DescriptorTable.pDescriptorRanges = ranges;
@@ -75,7 +75,7 @@ void SpriteRenderer::Initialize()
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Point, 0);
         staticSamplers[1] = DX12::GetStaticSamplerState(SamplerState::LinearClamp, 1);
 
-        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = { };
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = { };
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
         rootSignatureDesc.pParameters = rootParameters;
         rootSignatureDesc.NumStaticSamplers = ArraySize_(staticSamplers);

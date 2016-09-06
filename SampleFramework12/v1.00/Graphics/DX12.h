@@ -38,7 +38,7 @@ void Shutdown();
 
 // Frame submission synchronization
 void BeginFrame();
-void EndFrame(IDXGISwapChain3* swapChain, uint32 syncIntervals);
+void EndFrame(IDXGISwapChain4* swapChain, uint32 syncIntervals);
 void FlushGPU();
 
 void DeferredRelease_(IUnknown* resource);

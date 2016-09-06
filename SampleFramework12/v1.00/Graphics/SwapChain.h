@@ -33,7 +33,7 @@ public:
     void EndFrame();
 
     // Getters
-    IDXGISwapChain3* D3DSwapChain() const { return swapChain; };
+    IDXGISwapChain4* D3DSwapChain() const { return swapChain; };
     const RenderTexture& BackBuffer() const { return backBuffers[backBufferIdx]; };
 
     DXGI_FORMAT Format() const { return format; };
@@ -59,7 +59,7 @@ protected:
 
     static const uint64 NumBackBuffers = 2;
 
-    IDXGISwapChain3* swapChain = nullptr;
+    IDXGISwapChain4* swapChain = nullptr;
     uint32 backBufferIdx = 0;
     RenderTexture backBuffers[NumBackBuffers];
 

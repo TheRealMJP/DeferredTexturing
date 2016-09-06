@@ -139,7 +139,7 @@ D3D12_STATIC_SAMPLER_DESC ConvertToStaticSampler(const D3D12_SAMPLER_DESC& sampl
 
 // Convenience functions
 void SetViewport(ID3D12GraphicsCommandList* cmdList, uint64 width, uint64 height, float zMin = 0.0f, float zMax = 1.0f);
-void CreateRootSignature(ID3D12RootSignature** rootSignature, const D3D12_ROOT_SIGNATURE_DESC& desc);
+void CreateRootSignature(ID3D12RootSignature** rootSignature, const D3D12_ROOT_SIGNATURE_DESC1& desc);
 uint32 DispatchSize(uint64 numElements, uint64 groupSize);
 
 // Resource binding
