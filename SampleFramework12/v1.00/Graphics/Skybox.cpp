@@ -80,7 +80,7 @@ void SkyCache::Init(const Float3& sunDirection_, float sunSize, const Float3& gr
     // Compute the irradiance of the sun for a surface perpendicular to the sun using monte carlo integration.
     // Note that the solar radiance function provided by the authors of this sky model only works using
     // spectral rendering, so we sample a range of wavelengths and then convert to RGB.
-    SampledSpectrum groundAlbedoSpectrum = SampledSpectrum::FromRGB(Albedo);
+    SampledSpectrum groundAlbedoSpectrum = SampledSpectrum::FromRGB(Albedo, SpectrumType::Reflectance);
     SampledSpectrum solarRadiance;
 
     // Init the Hosek solar radiance model for all wavelengths
