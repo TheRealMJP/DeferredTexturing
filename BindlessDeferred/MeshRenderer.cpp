@@ -172,12 +172,14 @@ void MeshRenderer::Initialize(const Model* model_)
 
     LoadShaders();
 
-    sunShadowMap.Initialize(SunShadowMapSize, SunShadowMapSize, DXGI_FORMAT_D32_FLOAT, 1, NumCascades);
-    sunShadowMap.MakeReadable(DX12::CmdList);
+    sunShadowMap.Initialize(SunShadowMapSize, SunShadowMapSize, DXGI_FORMAT_D32_FLOAT, 1, NumCascades, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    sunShadowMap.Resource()->SetName(L"Sun Shadow Map");
 
     const uint64 numSpotLights = model->SpotLights().Size();
-    spotLightShadowMap.Initialize(SpotLightShadowMapSize, SpotLightShadowMapSize, DXGI_FORMAT_D24_UNORM_S8_UINT, 1, numSpotLights);
-    spotLightShadowMap.MakeReadable(DX12::CmdList);
+    spotLightShadowMap.Initialize(SpotLightShadowMapSize, SpotLightShadowMapSize, DXGI_FORMAT_D24_UNORM_S8_UINT, 1, numSpotLights, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    spotLightShadowMap.Resource()->SetName(L"Sun Shadow Map");
+
+    const uint64 numMaterialTextures = model->MaterialTextures().Count();
 
     {
         // Create a structured buffer containing texture indices per-material
@@ -202,20 +204,21 @@ void MeshRenderer::Initialize(const Model* model_)
         sbInit.Lifetime = BufferLifetime::Persistent;
         sbInit.InitData = textureIndices.Data();
         materialTextureIndices.Initialize(sbInit);
+        materialTextureIndices.Resource()->SetName(L"Material Texture Indices");
     }
 
     {
         // Main pass root signature
         D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        srvRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        srvRanges[0].NumDescriptors = uint32(6 + numMaterialTextures);
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
         D3D12_DESCRIPTOR_RANGE1 decalTextureRanges[1] = {};
         decalTextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        decalTextureRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        decalTextureRanges[0].NumDescriptors = AppSettings::NumDecalTextures;
         decalTextureRanges[0].BaseShaderRegister = 0;
         decalTextureRanges[0].RegisterSpace = 1;
         decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -682,8 +685,6 @@ void MeshRenderer::RenderSunShadowMap(ID3D12GraphicsCommandList* cmdList, const 
     OrthographicCamera cascadeCameras[NumCascades];
     PrepareShadowCascades(AppSettings::SunDirection, SunShadowMapSize, true, camera, sunShadowConstants.Data, cascadeCameras);
 
-    sunShadowMap.MakeWritable(cmdList);
-
     // Render the meshes to each cascade
     for(uint64 cascadeIdx = 0; cascadeIdx < NumCascades; ++cascadeIdx)
     {
@@ -700,8 +701,6 @@ void MeshRenderer::RenderSunShadowMap(ID3D12GraphicsCommandList* cmdList, const 
         // Draw the mesh with depth only, using the new shadow camera
         RenderSunShadowDepth(cmdList, cascadeCameras[cascadeIdx]);
     }
-
-    sunShadowMap.MakeReadable(cmdList);
 }
 
 // Render shadows for all spot lights
@@ -710,8 +709,6 @@ void MeshRenderer::RenderSpotLightShadowMap(ID3D12GraphicsCommandList* cmdList, 
     PIXMarker marker(cmdList, L"Spot Light Shadow Map Rendering");
     CPUProfileBlock cpuProfileBlock("Spot Light Shadow Map Rendering");
     ProfileBlock profileBlock(cmdList, "Spot Light Shadow Map Rendering");
-
-    spotLightShadowMap.MakeWritable(cmdList);
 
     const Array<ModelSpotLight>& spotLights = model->SpotLights();
     const uint64 numSpotLights = Min<uint64>(spotLights.Size(), AppSettings::MaxLightClamp);
@@ -739,6 +736,4 @@ void MeshRenderer::RenderSpotLightShadowMap(ID3D12GraphicsCommandList* cmdList, 
         Float4x4 shadowMatrix = shadowCamera.ViewProjectionMatrix() * ShadowScaleOffsetMatrix;
         spotLightShadowMatrices[i] = Float4x4::Transpose(shadowMatrix);
     }
-
-    spotLightShadowMap.MakeReadable(cmdList);
 }

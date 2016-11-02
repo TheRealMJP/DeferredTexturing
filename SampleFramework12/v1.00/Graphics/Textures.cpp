@@ -160,7 +160,8 @@ void LoadTexture(Texture& texture, const wchar* filePath, bool forceSRGB)
 
     DX12::ResourceUploadEnd(uploadContext);
 
-    DX12::TransitionResource(DX12::CmdList, texture.Resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    DX12::TransitionResource(DX12::CmdList, texture.Resource, D3D12_RESOURCE_STATE_COPY_DEST,
+                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
     texture.Width = uint32(metaData.width);
     texture.Height = uint32(metaData.height);

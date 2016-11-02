@@ -24,6 +24,8 @@ namespace AppSettings
 namespace SampleFramework12
 {
 
+static const uint32 MaxInputs = 8;
+
 PostProcessHelper::PostProcessHelper()
 {
 }
@@ -43,7 +45,7 @@ void PostProcessHelper::Initialize()
     {
         D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
         srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        srvRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        srvRanges[0].NumDescriptors = MaxInputs;
         srvRanges[0].BaseShaderRegister = 0;
         srvRanges[0].RegisterSpace = 0;
         srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -184,6 +186,7 @@ void PostProcessHelper::PostProcess(CompiledShaderPtr pixelShader, const char* n
     Assert_(numOutputs > 0);
     Assert_(outputs != nullptr);
     Assert_(numInputs == 0 || inputs != nullptr);
+    Assert_(numInputs <= MaxInputs);
 
     PIXMarker marker(cmdList, name);
 
@@ -243,8 +246,14 @@ void PostProcessHelper::PostProcess(CompiledShaderPtr pixelShader, const char* n
     cmdList->SetPipelineState(pso);
 
     AppSettings::BindCBufferGfx(cmdList, 0);
-    if(numInputs > 0)
-        DX12::BindShaderResources(cmdList, 1, numInputs, inputs);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE srvHandles[MaxInputs] = { };
+    for(uint64 i = 0; i < numInputs; ++i)
+        srvHandles[i] = inputs[i];
+    for(uint64 i = numInputs; i < MaxInputs; ++i)
+        srvHandles[i] = DX12::NullTexture2DSRV.CPUHandle;
+
+    DX12::BindShaderResources(cmdList, 1, MaxInputs, srvHandles);
 
     DX12::SetViewport(cmdList, outputs[0]->Texture.Width, outputs[0]->Texture.Height);
 

@@ -34,6 +34,8 @@ DescriptorHeap SamplerDescriptorHeap;
 LinearDescriptorHeap SRVDescriptorHeapGPU[RenderLatency];
 LinearDescriptorHeap SamplerDescriptorHeapGPU[RenderLatency];
 
+DescriptorHandle NullTexture2DSRV;
+
 static const uint64 NumBlendStates = uint64(BlendState::NumValues);
 static const uint64 NumRasterizerStates = uint64(RasterizerState::NumValues);
 static const uint64 NumDepthStates = uint64(DepthState::NumValues);
@@ -355,10 +357,26 @@ void Initialize_Helpers()
         sampDesc.MinLOD = 0;
         sampDesc.MaxLOD = D3D12_FLOAT32_MAX;
     }
+
+    {
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = { };
+        srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Texture2D.MipLevels = 1;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        srvDesc.Texture2D.PlaneSlice = 0;
+        srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+        NullTexture2DSRV = SRVDescriptorHeap.Allocate();
+        Device->CreateShaderResourceView(nullptr, &srvDesc, NullTexture2DSRV.CPUHandle);
+    }
 }
 
 void Shutdown_Helpers()
 {
+    SRVDescriptorHeap.Free(NullTexture2DSRV);
+
     RTVDescriptorHeap.Shutdown();
     SRVDescriptorHeap.Shutdown();
     DSVDescriptorHeap.Shutdown();
@@ -533,7 +551,7 @@ void CreateRootSignature(ID3D12RootSignature** rootSignature, const D3D12_ROOT_S
     ID3DBlobPtr signature;
     ID3DBlobPtr error;
     HRESULT hr = D3D12SerializeVersionedRootSignature(&versionedDesc, &signature, &error);
-    if(FAILED(hr)) 
+    if(FAILED(hr))
     {
         const char* errString = error ? reinterpret_cast<const char*>(error->GetBufferPointer()) : "";
 

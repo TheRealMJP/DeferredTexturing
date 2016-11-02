@@ -108,6 +108,8 @@ extern DescriptorHeap SamplerDescriptorHeap;
 extern LinearDescriptorHeap SRVDescriptorHeapGPU[RenderLatency];
 extern LinearDescriptorHeap SamplerDescriptorHeapGPU[RenderLatency];
 
+extern DescriptorHandle NullTexture2DSRV;
+
 // Lifetime
 void Initialize_Helpers();
 void Shutdown_Helpers();

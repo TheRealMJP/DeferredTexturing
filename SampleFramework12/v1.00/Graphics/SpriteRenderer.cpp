@@ -17,6 +17,15 @@
 namespace SampleFramework12
 {
 
+enum RootParams
+{
+    SRVParam_VS,
+    SRVParam_PS,
+    CBVParam,
+
+    NumRootParams
+};
+
 SpriteRenderer::SpriteRenderer()
 {
 
@@ -53,23 +62,28 @@ void SpriteRenderer::Initialize()
 
     {
         // Make the root signature
-        D3D12_DESCRIPTOR_RANGE1 ranges[1] = { };
+        D3D12_DESCRIPTOR_RANGE1 ranges[2] = { };
         ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        ranges[0].NumDescriptors = 2;
+        ranges[0].NumDescriptors = 1;
         ranges[0].BaseShaderRegister = 0;
         ranges[0].RegisterSpace = 0;
         ranges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER1 rootParameters[2] = { };
-        rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[0].DescriptorTable.pDescriptorRanges = ranges;
-        rootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
+        D3D12_ROOT_PARAMETER1 rootParameters[NumRootParams] = { };
+        rootParameters[SRVParam_VS].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[SRVParam_VS].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        rootParameters[SRVParam_VS].DescriptorTable.pDescriptorRanges = ranges;
+        rootParameters[SRVParam_VS].DescriptorTable.NumDescriptorRanges = 1;
 
-        rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[1].Descriptor.RegisterSpace = 0;
-        rootParameters[1].Descriptor.ShaderRegister = 0;
+        rootParameters[SRVParam_PS].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[SRVParam_PS].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[SRVParam_PS].DescriptorTable.pDescriptorRanges = ranges;
+        rootParameters[SRVParam_PS].DescriptorTable.NumDescriptorRanges = 1;
+
+        rootParameters[CBVParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[CBVParam].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[CBVParam].Descriptor.RegisterSpace = 0;
+        rootParameters[CBVParam].Descriptor.ShaderRegister = 0;
 
         D3D12_STATIC_SAMPLER_DESC staticSamplers[2] = { };
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Point, 0);
@@ -171,7 +185,7 @@ void SpriteRenderer::RenderBatch(ID3D12GraphicsCommandList* cmdList, const Textu
 
     perBatchCB.Data.TextureSize = Float2(float(texture->Width), float(texture->Height));
     perBatchCB.Upload();
-    perBatchCB.SetAsGfxRootParameter(cmdList, 1);
+    perBatchCB.SetAsGfxRootParameter(cmdList, CBVParam);
 
     #if Debug_
         // Make sure the draw rects are all valid
@@ -194,8 +208,11 @@ void SpriteRenderer::RenderBatch(ID3D12GraphicsCommandList* cmdList, const Textu
         instanceDataBuffer.MapAndSetData(drawData + offset, spritesToDraw);
 
         // Bind the resources
-        D3D12_CPU_DESCRIPTOR_HANDLE descriptors[] = { instanceDataBuffer.SRV(), texture->SRV.CPUHandle };
-        DX12::BindShaderResources(cmdList, 0, ArraySize_(descriptors), descriptors);
+        D3D12_CPU_DESCRIPTOR_HANDLE vsDescriptors[] = { instanceDataBuffer.SRV() };
+        DX12::BindShaderResources(cmdList, SRVParam_VS, ArraySize_(vsDescriptors), vsDescriptors);
+
+        D3D12_CPU_DESCRIPTOR_HANDLE psDescriptors[] = { texture->SRV.CPUHandle };
+        DX12::BindShaderResources(cmdList, SRVParam_PS, ArraySize_(psDescriptors), psDescriptors);
 
         // Draw
         cmdList->DrawIndexedInstanced(6, uint32(spritesToDraw), 0, 0, 0);

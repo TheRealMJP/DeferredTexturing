@@ -156,6 +156,7 @@ void BindlessDeferred::Initialize()
         sbInit.Lifetime = BufferLifetime::Persistent;
         sbInit.InitialState = D3D12_RESOURCE_STATE_COPY_DEST;
         decalBuffer.Initialize(sbInit);
+        decalBuffer.Resource()->SetName(L"Decal Buffer");
     }
 
     {
@@ -194,6 +195,7 @@ void BindlessDeferred::Initialize()
         sbInit.InitialState = D3D12_RESOURCE_STATE_COPY_DEST;
 
         spotLightBuffer.Initialize(sbInit);
+        spotLightBuffer.Resource()->SetName(L"Spot Light Buffer");
     }
 
     {
@@ -208,6 +210,9 @@ void BindlessDeferred::Initialize()
 
         nonMsaaArgsBuffer.Initialize(sbInit);
         msaaArgsBuffer.Initialize(sbInit);
+
+        nonMsaaArgsBuffer.Resource()->SetName(L"Non-MSAA Args Buffer");
+        msaaArgsBuffer.Resource()->SetName(L"MSAA Args Buffer");
     }
 
     {
@@ -390,97 +395,6 @@ void BindlessDeferred::Initialize()
         DX12::CreateRootSignature(&pickingRS, rootSignatureDesc);
     }
 
-     {
-        // Deferred root signature
-        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
-        descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        descriptorRanges[0].NumDescriptors = 1;
-        descriptorRanges[0].BaseShaderRegister = 0;
-        descriptorRanges[0].RegisterSpace = 0;
-        descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-        descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        descriptorRanges[1].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-        descriptorRanges[1].BaseShaderRegister = 0;
-        descriptorRanges[1].RegisterSpace = 0;
-        descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-        D3D12_DESCRIPTOR_RANGE1 decalTextureRanges[1] = {};
-        decalTextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        decalTextureRanges[0].NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-        decalTextureRanges[0].BaseShaderRegister = 0;
-        decalTextureRanges[0].RegisterSpace = 1;
-        decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-        D3D12_ROOT_PARAMETER1 rootParameters[NumDeferredRootParams] = {};
-
-        // DeferredCBuffer
-        rootParameters[Deferred_DeferredCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_DeferredCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_DeferredCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_DeferredCBuffer].Descriptor.ShaderRegister = 2;
-
-        // PSCBuffer
-        rootParameters[Deferred_PSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_PSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_PSCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_PSCBuffer].Descriptor.ShaderRegister = 0;
-
-        // ShadowCBuffer
-        rootParameters[Deferred_ShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_ShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_ShadowCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_ShadowCBuffer].Descriptor.ShaderRegister = 1;
-
-        // LightCBuffer
-        rootParameters[Deferred_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_LightCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_LightCBuffer].Descriptor.ShaderRegister = 3;
-
-        // AppSettings
-        rootParameters[Deferred_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_AppSettings].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
-
-        // Descriptors
-        rootParameters[Deferred_Descriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[Deferred_Descriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_Descriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
-        rootParameters[Deferred_Descriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
-
-        // Decal texture descriptors
-        rootParameters[Deferred_DecalDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[Deferred_DecalDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_DecalDescriptors].DescriptorTable.pDescriptorRanges = decalTextureRanges;
-        rootParameters[Deferred_DecalDescriptors].DescriptorTable.NumDescriptorRanges = 1;
-
-        D3D12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
-        staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
-        staticSamplers[1] = DX12::GetStaticSamplerState(SamplerState::ShadowMapPCF, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
-
-        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
-        rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
-        rootSignatureDesc.pParameters = rootParameters;
-        rootSignatureDesc.NumStaticSamplers = ArraySize_(staticSamplers);
-        rootSignatureDesc.pStaticSamplers = staticSamplers;
-        rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
-
-        DX12::CreateRootSignature(&deferredRootSignature, rootSignatureDesc);
-
-        // Command signature for MSAA deferred indirect dispatch
-        D3D12_INDIRECT_ARGUMENT_DESC argsDescs[1] = { };
-        argsDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
-
-        D3D12_COMMAND_SIGNATURE_DESC cmdSignatureDesc = { };
-        cmdSignatureDesc.ByteStride = sizeof(D3D12_DISPATCH_ARGUMENTS);
-        cmdSignatureDesc.NodeMask = 0;
-        cmdSignatureDesc.NumArgumentDescs = ArraySize_(argsDescs);
-        cmdSignatureDesc.pArgumentDescs = argsDescs;
-        DXCall(DX12::Device->CreateCommandSignature(&cmdSignatureDesc, nullptr, IID_PPV_ARGS(&deferredCmdSignature)));
-    }
-
     {
         // MSAA mask root signature
         D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
@@ -603,6 +517,19 @@ void BindlessDeferred::Initialize()
         rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
         DX12::CreateRootSignature(&clusterVisRootSignature, rootSignatureDesc);
+    }
+
+    {
+        // Command signature for MSAA deferred indirect dispatch
+        D3D12_INDIRECT_ARGUMENT_DESC argsDescs[1] = { };
+        argsDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
+
+        D3D12_COMMAND_SIGNATURE_DESC cmdSignatureDesc = { };
+        cmdSignatureDesc.ByteStride = sizeof(D3D12_DISPATCH_ARGUMENTS);
+        cmdSignatureDesc.NodeMask = 0;
+        cmdSignatureDesc.NumArgumentDescs = ArraySize_(argsDescs);
+        cmdSignatureDesc.pArgumentDescs = argsDescs;
+        DXCall(DX12::Device->CreateCommandSignature(&cmdSignatureDesc, nullptr, IID_PPV_ARGS(&deferredCmdSignature)));
     }
 }
 
@@ -828,6 +755,7 @@ void BindlessDeferred::CreateRenderTargets()
     const uint32 NumSamples = AppSettings::NumMSAASamples();
 
     mainTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, NumSamples, 1, NumSamples == 1);
+    mainTarget.Resource()->SetName(L"Main Target");
 
     tangentFrameTarget.Initialize(width, height, DXGI_FORMAT_R10G10B10A2_UNORM, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     uvTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_SNORM, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -841,6 +769,7 @@ void BindlessDeferred::CreateRenderTargets()
         uint32 deferredWidth = width * 2;
         uint32 deferredHeight = NumSamples == 4 ? height * 2 : height;
         deferredMSAATarget.Initialize(deferredWidth, deferredHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 1, true);
+        deferredMSAATarget.Resource()->SetName(L"Deferred MSAA Target");
     }
 
     depthBuffer.Initialize(width, height, DXGI_FORMAT_D32_FLOAT, NumSamples, 1, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ);
@@ -915,6 +844,8 @@ void BindlessDeferred::InitializeScene()
     camera.SetXRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].x);
     camera.SetYRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].y);
 
+    const uint64 numMaterialTextures = currentModel->MaterialTextures().Count();
+
     for(uint64 msaaMode = 0; msaaMode < uint64(MSAAModes::NumValues); ++msaaMode)
     {
         const uint32 msaa = msaaMode > 0;
@@ -927,7 +858,7 @@ void BindlessDeferred::InitializeScene()
             opts.Add("MSAA_", msaa);
             opts.Add("NumMSAASamples_", numMSAASamples);
             opts.Add("ShadePerSample_", 0);
-            opts.Add("NumMaterialTextures_", uint32(currentModel->MaterialTextures().Count()));
+            opts.Add("NumMaterialTextures_", uint32(numMaterialTextures));
             opts.Add("ComputeUVGradients_", computeUVGradients);
             deferredCS[msaaMode][computeUVGradients][0] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, ShaderProfile::SM51, opts);
 
@@ -937,7 +868,7 @@ void BindlessDeferred::InitializeScene()
                 opts.Add("MSAA_", msaa);
                 opts.Add("NumMSAASamples_", numMSAASamples);
                 opts.Add("ShadePerSample_", 1);
-                opts.Add("NumMaterialTextures_", uint32(currentModel->MaterialTextures().Count()));
+                opts.Add("NumMaterialTextures_", uint32(numMaterialTextures));
                 opts.Add("ComputeUVGradients_", computeUVGradients);
                 deferredCS[msaaMode][computeUVGradients][1] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, ShaderProfile::SM51, opts);
             }
@@ -964,6 +895,89 @@ void BindlessDeferred::InitializeScene()
 
         AppSettings::MaxLightClamp.SetValue(int32(numSpotLights));
     }
+
+    {
+        DX12::DeferredRelease(deferredRootSignature);
+
+        // Deferred root signature
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
+        descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        descriptorRanges[0].NumDescriptors = 1;
+        descriptorRanges[0].BaseShaderRegister = 0;
+        descriptorRanges[0].RegisterSpace = 0;
+        descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        descriptorRanges[1].NumDescriptors = 15 + uint32(numMaterialTextures);
+        descriptorRanges[1].BaseShaderRegister = 0;
+        descriptorRanges[1].RegisterSpace = 0;
+        descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_DESCRIPTOR_RANGE1 decalTextureRanges[1] = {};
+        decalTextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        decalTextureRanges[0].NumDescriptors = AppSettings::NumDecalTextures;
+        decalTextureRanges[0].BaseShaderRegister = 0;
+        decalTextureRanges[0].RegisterSpace = 1;
+        decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_ROOT_PARAMETER1 rootParameters[NumDeferredRootParams] = {};
+
+        // DeferredCBuffer
+        rootParameters[Deferred_DeferredCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_DeferredCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_DeferredCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_DeferredCBuffer].Descriptor.ShaderRegister = 2;
+
+        // PSCBuffer
+        rootParameters[Deferred_PSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_PSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_PSCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_PSCBuffer].Descriptor.ShaderRegister = 0;
+
+        // ShadowCBuffer
+        rootParameters[Deferred_ShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_ShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_ShadowCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_ShadowCBuffer].Descriptor.ShaderRegister = 1;
+
+        // LightCBuffer
+        rootParameters[Deferred_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_LightCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_LightCBuffer].Descriptor.ShaderRegister = 3;
+
+        // AppSettings
+        rootParameters[Deferred_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[Deferred_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[Deferred_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+
+        // Descriptors
+        rootParameters[Deferred_Descriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[Deferred_Descriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_Descriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
+        rootParameters[Deferred_Descriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
+
+        // Decal texture descriptors
+        rootParameters[Deferred_DecalDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[Deferred_DecalDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[Deferred_DecalDescriptors].DescriptorTable.pDescriptorRanges = decalTextureRanges;
+        rootParameters[Deferred_DecalDescriptors].DescriptorTable.NumDescriptorRanges = 1;
+
+        D3D12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
+        staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+        staticSamplers[1] = DX12::GetStaticSamplerState(SamplerState::ShadowMapPCF, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
+        rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
+        rootSignatureDesc.pParameters = rootParameters;
+        rootSignatureDesc.NumStaticSamplers = ArraySize_(staticSamplers);
+        rootSignatureDesc.pStaticSamplers = staticSamplers;
+        rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+        DX12::CreateRootSignature(&deferredRootSignature, rootSignatureDesc);
+    }
+
 
     numDecals = 0;
 }
@@ -1458,8 +1472,8 @@ void BindlessDeferred::RenderForward()
     PIXMarker marker(cmdList, "Forward rendering");
 
     {
-        // Transition render targets and depth buffers back to a writable state
-        D3D12_RESOURCE_BARRIER barriers[3] = {};
+        // Transition render targets and depth buffers back to a writable state, and sync on the shadow maps
+        D3D12_RESOURCE_BARRIER barriers[5] = {};
         barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
         barriers[0].Transition.pResource = mainTarget.Resource();
@@ -1480,6 +1494,20 @@ void BindlessDeferred::RenderForward()
         barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
         barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
         barriers[2].Transition.Subresource = 0;
+
+        barriers[3].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[3].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[3].Transition.pResource = meshRenderer.SunShadowMap().Resource();
+        barriers[3].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        barriers[3].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+        barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[4].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
+        barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        barriers[4].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
         cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
     }
@@ -1518,8 +1546,9 @@ void BindlessDeferred::RenderForward()
         skybox.RenderSky(cmdList, camera.ViewMatrix(), camera.ProjectionMatrix(), skyCache, true);
 
         {
-            // Make our targets readable again, which will force a sync point
-            D3D12_RESOURCE_BARRIER barriers[3] = {};
+            // Make our targets readable again, which will force a sync point. Also transition
+            // the shadow maps back to their writable state
+            D3D12_RESOURCE_BARRIER barriers[5] = {};
             barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             barriers[0].Transition.pResource = mainTarget.Resource();
@@ -1541,6 +1570,20 @@ void BindlessDeferred::RenderForward()
             barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
             barriers[2].Transition.Subresource = 0;
 
+            barriers[3].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[3].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barriers[3].Transition.pResource = meshRenderer.SunShadowMap().Resource();
+            barriers[3].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            barriers[3].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+            barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barriers[4].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
+            barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            barriers[4].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
             cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
         }
     }
@@ -1553,8 +1596,8 @@ void BindlessDeferred::RenderDeferred()
     PIXMarker marker(cmdList, "Render Deferred");
 
     {
-        // Transition our G-Buffer targets to a writable state
-        D3D12_RESOURCE_BARRIER barriers[5] = {};
+        // Transition our G-Buffer targets to a writable state, and sync on shadow map rendering
+        D3D12_RESOURCE_BARRIER barriers[7] = {};
         barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
         barriers[0].Transition.pResource = depthBuffer.Resource();
@@ -1585,10 +1628,24 @@ void BindlessDeferred::RenderDeferred()
 
         barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[4].Transition.pResource = uvGradientsTarget.Resource();
-        barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[4].Transition.Subresource = 0;
+        barriers[4].Transition.pResource = meshRenderer.SunShadowMap().Resource();
+        barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[4].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+        barriers[5].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[5].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[5].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
+        barriers[5].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        barriers[5].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[5].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+        barriers[6].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[6].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[6].Transition.pResource = uvGradientsTarget.Resource();
+        barriers[6].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[6].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barriers[6].Transition.Subresource = 0;
 
         const uint32 numBarriers = AppSettings::ComputeUVGradients ? ArraySize_(barriers) - 1 : ArraySize_(barriers);
         cmdList->ResourceBarrier(numBarriers, barriers);
@@ -1866,6 +1923,10 @@ void BindlessDeferred::RenderDeferred()
 
         AppSettings::BindCBufferCompute(cmdList, Deferred_AppSettings);
 
+        D3D12_CPU_DESCRIPTOR_HANDLE skyTargetSRV = DX12::NullTexture2DSRV.CPUHandle;
+        if(msaaEnabled)
+            skyTargetSRV = mainTarget.SRV();
+
         D3D12_CPU_DESCRIPTOR_HANDLE descriptors[] =
         {
             deferredTarget.UAV.CPUHandle,
@@ -1882,7 +1943,7 @@ void BindlessDeferred::RenderDeferred()
             uvGradientsTarget.SRV(),
             materialIDTarget.SRV(),
             depthBuffer.SRV(),
-            mainTarget.SRV(),
+            skyTargetSRV,
             msaaMaskBuffer.SRV(),
         };
 
@@ -1933,14 +1994,14 @@ void BindlessDeferred::RenderDeferred()
             barriers[0].Transition.pResource = deferredMSAATarget.Resource();
             barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            barriers[0].Transition.Subresource = 0;
+            barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
             barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             barriers[1].Transition.pResource = mainTarget.Resource();
             barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
             barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            barriers[1].Transition.Subresource = 0;
+            barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
             cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
         }
@@ -1956,6 +2017,27 @@ void BindlessDeferred::RenderDeferred()
 
             mainTarget.Transition(cmdList, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         }
+    }
+
+    {
+        // Transition the shadow maps back into their writable state
+        D3D12_RESOURCE_BARRIER barriers[2] = {};
+
+        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[0].Transition.pResource = meshRenderer.SunShadowMap().Resource();
+        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[0].Transition.StateAfter =  D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[1].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
+        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[1].Transition.StateAfter =  D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+        cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
     }
 }
 
