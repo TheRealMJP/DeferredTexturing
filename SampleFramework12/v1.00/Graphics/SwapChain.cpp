@@ -77,7 +77,7 @@ void SwapChain::Initialize(HWND outputWindow)
     swapChainDesc.OutputWindow = outputWindow;
     swapChainDesc.SampleDesc.Count = 1;
     swapChainDesc.Windowed = TRUE;
-    swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+    swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
     IDXGISwapChain* tempSwapChain = nullptr;
     DXCall(DX12::Factory->CreateSwapChain(DX12::GfxQueue, &swapChainDesc, &tempSwapChain));
@@ -184,8 +184,8 @@ void SwapChain::Reset()
 
     DXCall(swapChain->SetFullscreenState(fullScreen, NULL));
 
-    DXCall(swapChain->ResizeBuffers(NumBackBuffers, width, height,
-                                    noSRGBFormat, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
+    DXCall(swapChain->ResizeBuffers(NumBackBuffers, width, height, noSRGBFormat, 
+                                    DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING));
 
     if(fullScreen)
     {
