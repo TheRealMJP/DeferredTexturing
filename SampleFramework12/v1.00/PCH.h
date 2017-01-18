@@ -91,7 +91,6 @@ typedef uint32_t bool32;
 #include <dxgi1_5.h>
 #include <D3Dcompiler.h>
 #include <d3d12.h>
-#include <pix.h>
 
 // DirectX Math
 #include <DirectXMath.h>
@@ -105,6 +104,11 @@ typedef uint32_t bool32;
 #else
     #pragma comment(lib, "..\\Externals\\DirectXTex Aug 2015\\Lib 2015\\Release\\DirectXTex.lib")
 #endif
+
+// Pix for Windows
+#define USE_PIX
+#include "..\\..\\Externals\\WinPixEventRuntime\\Include\\WinPixEventRuntime\\pix3.h"
+#pragma comment(lib, "..\\Externals\\WinPixEventRuntime\\bin\\WinPixEventRuntime.lib")
 
 // Un-define min and max from the windows headers
 #ifdef min

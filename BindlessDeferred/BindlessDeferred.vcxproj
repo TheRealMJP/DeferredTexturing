@@ -207,6 +207,11 @@
   <ItemGroup>
     <Natvis Include="..\SampleFramework12\v1.00\sf12.natvis" />
   </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Externals\WinPixEventRuntime\bin\WinPixEventRuntime.dll">
+      <FileType>Document</FileType>
+    </CustomBuild>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -240,6 +240,9 @@
       <Filter>SampleFramework12\External DLLs</Filter>
     </CustomBuild>
     <CustomBuild Include="AppSettings.cs" />
+    <CustomBuild Include="..\Externals\WinPixEventRuntime\bin\WinPixEventRuntime.dll">
+      <Filter>SampleFramework12\External DLLs</Filter>
+    </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="..\SampleFramework12\v1.00\sf12.natvis">
