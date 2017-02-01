@@ -250,9 +250,6 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, BufferLif
             uploadContext.CmdList->CopyBufferRegion(Resource, 0, uploadContext.Resource, uploadContext.ResourceOffset, size);
 
             DX12::ResourceUploadEnd(uploadContext);
-
-            if(initialState != D3D12_RESOURCE_STATE_COPY_DEST)
-                DX12::TransitionResource(DX12::CmdList, Resource, D3D12_RESOURCE_STATE_COPY_DEST, initialState);
         }
     }
 }

@@ -69,15 +69,21 @@ void SpriteRenderer::Initialize()
         ranges[0].RegisterSpace = 0;
         ranges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+        ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        ranges[1].NumDescriptors = 1;
+        ranges[1].BaseShaderRegister = 1;
+        ranges[1].RegisterSpace = 0;
+        ranges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
         D3D12_ROOT_PARAMETER1 rootParameters[NumRootParams] = { };
         rootParameters[SRVParam_VS].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         rootParameters[SRVParam_VS].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        rootParameters[SRVParam_VS].DescriptorTable.pDescriptorRanges = ranges;
+        rootParameters[SRVParam_VS].DescriptorTable.pDescriptorRanges = &ranges[0];
         rootParameters[SRVParam_VS].DescriptorTable.NumDescriptorRanges = 1;
 
         rootParameters[SRVParam_PS].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         rootParameters[SRVParam_PS].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[SRVParam_PS].DescriptorTable.pDescriptorRanges = ranges;
+        rootParameters[SRVParam_PS].DescriptorTable.pDescriptorRanges = &ranges[1];
         rootParameters[SRVParam_PS].DescriptorTable.NumDescriptorRanges = 1;
 
         rootParameters[CBVParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;

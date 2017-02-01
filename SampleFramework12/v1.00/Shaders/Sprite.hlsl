@@ -30,7 +30,7 @@ struct SpriteDrawData
 // Resources
 //=================================================================================================
 StructuredBuffer<SpriteDrawData> SpriteBuffer : register(t0);
-Texture2D SpriteTexture : register(t0);
+Texture2D SpriteTexture : register(t1);
 SamplerState PointSampler : register(s0);
 SamplerState LinearSampler : register(s1);
 

@@ -160,9 +160,6 @@ void LoadTexture(Texture& texture, const wchar* filePath, bool forceSRGB)
 
     DX12::ResourceUploadEnd(uploadContext);
 
-    DX12::TransitionResource(DX12::CmdList, texture.Resource, D3D12_RESOURCE_STATE_COPY_DEST,
-                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
     texture.Width = uint32(metaData.width);
     texture.Height = uint32(metaData.height);
     texture.Depth = uint32(metaData.depth);
@@ -259,11 +256,7 @@ void Create2DTexture(Texture& texture, uint64 width, uint64 height, uint64 numMi
     texture.Cubemap = cubeMap;
 
     if(initData != nullptr)
-    {
         UploadTextureData(texture, initData);
-
-        DX12::TransitionResource(DX12::CmdList, texture.Resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    }
 }
 
 void Create3DTexture(Texture& texture, uint64 width, uint64 height, uint64 depth, uint64 numMips, DXGI_FORMAT format, const void* initData)
@@ -317,11 +310,7 @@ void Create3DTexture(Texture& texture, uint64 width, uint64 height, uint64 depth
     texture.Cubemap = false;
 
     if(initData != nullptr)
-    {
         UploadTextureData(texture, initData);
-
-        DX12::TransitionResource(DX12::CmdList, texture.Resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    }
 }
 
 void UploadTextureData(const Texture& texture, const void* initData)
