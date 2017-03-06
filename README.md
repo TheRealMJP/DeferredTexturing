@@ -6,7 +6,7 @@ See the full blog post for more info: [https://mynameismjp.wordpress.com/2016/03
 
 # Build Instructions
 
-The repository contains a Visual Studio 2015 project and solution file that's ready to build on Windows. All external dependencies are included in the repository, so there's no need to download additional libraries. Running the demo requires Windows 10, as well as a GPU that supports Feature Level 12_0.
+The repository contains a Visual Studio 2015 project and solution file that's ready to build on Windows. All external dependencies are included in the repository, so there's no need to download additional libraries. Running the demo requires Windows 10, as well as a GPU that supports Feature Level 11_1.
 
 # Using the Demo App
 
