@@ -762,6 +762,11 @@ void BindlessDeferred::CreateRenderTargets()
     uvGradientsTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_SNORM, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     materialIDTarget.Initialize(width, height, DXGI_FORMAT_R8_UINT, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
+    tangentFrameTarget.Resource()->SetName(L"Tangent Frame Target");
+    uvTarget.Resource()->SetName(L"UV Target");
+    uvGradientsTarget.Resource()->SetName(L"UV Gradient Target");
+    materialIDTarget.Resource()->SetName(L"Material ID Target");
+
     if(NumSamples > 1)
     {
         resolveTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 1, false);
