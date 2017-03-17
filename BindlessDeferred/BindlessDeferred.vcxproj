@@ -139,6 +139,8 @@
     <ClCompile Include="..\SampleFramework12\v1.00\Utility.cpp" />
     <ClCompile Include="..\SampleFramework12\v1.00\Window.cpp" />
     <ClCompile Include="AppSettings.cpp" />
+    <ClCompile Include="EnkiTS\TaskScheduler.cpp" />
+    <ClCompile Include="EnkiTS\TaskScheduler_c.cpp" />
     <ClCompile Include="MeshRenderer.cpp" />
     <ClCompile Include="PostProcessor.cpp" />
     <ClCompile Include="BindlessDeferred.cpp" />
@@ -184,6 +186,9 @@
     <ClInclude Include="..\SampleFramework12\v1.00\Window.h" />
     <ClInclude Include="AppConfig.h" />
     <ClInclude Include="AppSettings.h" />
+    <ClInclude Include="EnkiTS\LockLessMultiReadPipe.h" />
+    <ClInclude Include="EnkiTS\TaskScheduler.h" />
+    <ClInclude Include="EnkiTS\TaskScheduler_c.h" />
     <ClInclude Include="MeshRenderer.h" />
     <ClInclude Include="PostProcessor.h" />
     <ClInclude Include="BindlessDeferred.h" />

@@ -101,6 +101,12 @@
     <ClCompile Include="..\SampleFramework12\v1.00\Graphics\ShadowHelper.cpp">
       <Filter>SampleFramework12\Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="EnkiTS\TaskScheduler.cpp">
+      <Filter>EnkiTS</Filter>
+    </ClCompile>
+    <ClCompile Include="EnkiTS\TaskScheduler_c.cpp">
+      <Filter>EnkiTS</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AppSettings.h" />
@@ -223,6 +229,15 @@
       <Filter>SampleFramework12\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="SharedTypes.h" />
+    <ClInclude Include="EnkiTS\LockLessMultiReadPipe.h">
+      <Filter>EnkiTS</Filter>
+    </ClInclude>
+    <ClInclude Include="EnkiTS\TaskScheduler.h">
+      <Filter>EnkiTS</Filter>
+    </ClInclude>
+    <ClInclude Include="EnkiTS\TaskScheduler_c.h">
+      <Filter>EnkiTS</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="SampleFramework12">
@@ -233,6 +248,9 @@
     </Filter>
     <Filter Include="SampleFramework12\Graphics">
       <UniqueIdentifier>{075a1545-c637-4509-b8ec-701cdbf9fef9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="EnkiTS">
+      <UniqueIdentifier>{8267240b-3934-47c0-bb9f-46a9a7847f61}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

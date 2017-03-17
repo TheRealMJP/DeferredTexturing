@@ -204,6 +204,8 @@ protected:
     void RenderClusterVisualizer();
     void RenderHUD(const Timer& timer);
 
+    static void CompileShadersTask(uint32 start, uint32 end, uint32 threadNum, void* args);
+
 public:
 
     BindlessDeferred();

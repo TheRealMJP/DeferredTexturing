@@ -24,6 +24,7 @@
 
 #include "BindlessDeferred.h"
 #include "SharedTypes.h"
+#include "EnkiTS/TaskScheduler_c.h"
 
 using namespace SampleFramework12;
 using std::wstring;
@@ -44,6 +45,9 @@ StaticAssert_(ArraySize_(SceneCameraPositions) == uint64(Scenes::NumValues));
 StaticAssert_(ArraySize_(SceneCameraRotations) == uint64(Scenes::NumValues));
 
 static const uint64 NumConeSides = 16;
+
+static enkiTaskScheduler* taskScheduler = nullptr;
+static enkiTaskSet* taskSet = nullptr;
 
 struct PickingData
 {
@@ -662,6 +666,7 @@ void BindlessDeferred::CreatePSOs()
         DXCall(DX12::Device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&msaaMaskPSOs[1])));
     }
 
+    if(taskSet == nullptr)
     {
         // Deferred rendering PSO
         const uint64 uvGradIdx = AppSettings::ComputeUVGradients ? 1 : 0;
@@ -838,6 +843,32 @@ void BindlessDeferred::CreateRenderTargets()
     }
 }
 
+void BindlessDeferred::CompileShadersTask(uint32 start, uint32 end, uint32 threadNum, void* args)
+{
+    BindlessDeferred* app = (BindlessDeferred*)args;
+    const uint64 numMaterialTextures = app->currentModel->MaterialTextures().Count();
+
+    for(uint32 i = start; i < end; ++i)
+    {
+        uint32 msaaMode = i / 4;
+        uint32 computeUVGradients = (i / 2) % 2;
+        uint32 perSample = i % 2;
+
+        uint32 numMSAASamples = AppSettings::NumMSAASamples(MSAAModes(msaaMode));
+        uint32 msaa = msaaMode > 0;
+        if(msaa == 0 && perSample == 1)
+            continue;
+
+        CompileOptions opts;
+        opts.Add("MSAA_", msaa);
+        opts.Add("NumMSAASamples_", numMSAASamples);
+        opts.Add("ShadePerSample_", perSample);
+        opts.Add("NumMaterialTextures_", uint32(numMaterialTextures));
+        opts.Add("ComputeUVGradients_", computeUVGradients);
+        app->deferredCS[msaaMode][computeUVGradients][perSample] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, ShaderProfile::SM51, opts);
+    }
+}
+
 void BindlessDeferred::InitializeScene()
 {
     currentModel = &sceneModels[uint64(AppSettings::CurrentScene)];
@@ -845,40 +876,24 @@ void BindlessDeferred::InitializeScene()
     DX12::FlushGPU();
     meshRenderer.Initialize(currentModel);
 
+    const uint64 numMaterialTextures = currentModel->MaterialTextures().Count();
+
     camera.SetPosition(SceneCameraPositions[uint64(AppSettings::CurrentScene)]);
     camera.SetXRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].x);
     camera.SetYRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].y);
 
-    const uint64 numMaterialTextures = currentModel->MaterialTextures().Count();
-
-    for(uint64 msaaMode = 0; msaaMode < uint64(MSAAModes::NumValues); ++msaaMode)
+    if(taskSet != nullptr)
     {
-        const uint32 msaa = msaaMode > 0;
-        const uint32 numMSAASamples = AppSettings::NumMSAASamples(MSAAModes(msaaMode));
-
-        for(uint32 computeUVGradients = 0; computeUVGradients < 2; ++computeUVGradients)
-        {
-            // Compile deferred shaders
-            CompileOptions opts;
-            opts.Add("MSAA_", msaa);
-            opts.Add("NumMSAASamples_", numMSAASamples);
-            opts.Add("ShadePerSample_", 0);
-            opts.Add("NumMaterialTextures_", uint32(numMaterialTextures));
-            opts.Add("ComputeUVGradients_", computeUVGradients);
-            deferredCS[msaaMode][computeUVGradients][0] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, ShaderProfile::SM51, opts);
-
-            if(msaa)
-            {
-                opts.Reset();
-                opts.Add("MSAA_", msaa);
-                opts.Add("NumMSAASamples_", numMSAASamples);
-                opts.Add("ShadePerSample_", 1);
-                opts.Add("NumMaterialTextures_", uint32(numMaterialTextures));
-                opts.Add("ComputeUVGradients_", computeUVGradients);
-                deferredCS[msaaMode][computeUVGradients][1] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, ShaderProfile::SM51, opts);
-            }
-        }
+        enkiWaitForTaskSet(taskScheduler, taskSet);
     }
+    else
+    {
+        taskScheduler = enkiCreateTaskScheduler();
+        taskSet = enkiCreateTaskSet(taskScheduler, CompileShadersTask);
+    }
+
+    // Kick off tasks to compile the deferred compute shaders
+    enkiAddTaskSetToPipe(taskScheduler, taskSet, this, uint32(MSAAModes::NumValues) * 2 * 2);
 
     {
         // Initialize the spotlight data used for rendering
@@ -983,7 +998,6 @@ void BindlessDeferred::InitializeScene()
         DX12::CreateRootSignature(&deferredRootSignature, rootSignatureDesc);
     }
 
-
     numDecals = 0;
 }
 
@@ -1064,6 +1078,17 @@ void BindlessDeferred::Update(const Timer& timer)
         DestroyPSOs();
         CreatePSOs();
     }
+
+    if(taskSet != nullptr && enkiIsTaskSetComplete(taskScheduler, taskSet))
+    {
+        enkiDeleteTaskSet(taskSet);
+        enkiDeleteTaskScheduler(taskScheduler);
+        taskSet = nullptr;
+        taskScheduler = nullptr;
+
+        DestroyPSOs();
+        CreatePSOs();
+    }
 }
 
 void BindlessDeferred::Render(const Timer& timer)
@@ -1072,6 +1097,35 @@ void BindlessDeferred::Render(const Timer& timer)
 
     CPUProfileBlock cpuProfileBlock("Render");
     ProfileBlock gpuProfileBlock(cmdList, "Render Total");
+
+    if(taskSet != nullptr)
+    {
+        // We're still waiting for shaders to compile, so print a message to the screen and skip the render loop
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { swapChain.BackBuffer().RTV.CPUHandle };
+        cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
+
+        const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        cmdList->ClearRenderTargetView(rtvHandles[0], clearColor, 0, nullptr);
+
+        DX12::SetViewport(cmdList, swapChain.Width(), swapChain.Height());
+
+        Float2 viewportSize;
+        viewportSize.x = float(swapChain.Width());
+        viewportSize.y = float(swapChain.Height());
+        spriteRenderer.Begin(cmdList, viewportSize, SpriteFilterMode::Point, SpriteBlendMode::AlphaBlend);
+
+        wchar text[32] = L"Compiling Shaders...";
+        uint32 numDots = uint32(Frac(timer.ElapsedSecondsF()) * 4.0f);
+        text[17 + numDots] = 0;
+        Float2 textSize = font.MeasureText(text);
+
+        Float2 textPos = (viewportSize * 0.5f) - (textSize * 0.5f);
+        spriteRenderer.RenderText(cmdList, font, text, textPos, Float4(1.0f, 1.0f, 1.0f, 1.0f));
+
+        spriteRenderer.End();
+
+        return;
+    }
 
     RenderClusters();
 

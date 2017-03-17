@@ -288,6 +288,8 @@ struct ShaderFile
 
 static GrowableList<ShaderFile*> ShaderFiles;
 static GrowableList<CompiledShader*> CompiledShaders;
+static SRWLOCK ShaderFilesLock = SRWLOCK_INIT;
+static SRWLOCK CompiledShadersLock = SRWLOCK_INIT;
 
 static void CompileShader(CompiledShader* shader)
 {
@@ -305,7 +307,8 @@ static void CompileShader(CompiledShader* shader)
     {
         const wstring& filePath = filePaths[fileIdx];
         ShaderFile* shaderFile = nullptr;
-        for(uint64 shaderFileIdx = 0; shaderFileIdx < ShaderFiles.Count(); ++shaderFileIdx)
+        const uint64 numShaderFiles = ShaderFiles.Count();
+        for(uint64 shaderFileIdx = 0; shaderFileIdx < numShaderFiles; ++shaderFileIdx)
         {
             if(ShaderFiles[shaderFileIdx]->FilePath == filePath)
             {
@@ -316,7 +319,12 @@ static void CompileShader(CompiledShader* shader)
         if(shaderFile == nullptr)
         {
             shaderFile = new ShaderFile(filePath);
+
+            AcquireSRWLockExclusive(&ShaderFilesLock);
+
             ShaderFiles.Add(shaderFile);
+
+            ReleaseSRWLockExclusive(&ShaderFilesLock);
         }
 
         bool containsShader = false;
@@ -343,7 +351,12 @@ CompiledShaderPtr CompileFromFile(const wchar* path,
 {
     CompiledShader* compiledShader = new CompiledShader(path, functionName, profile, compileOpts, forceOptimization, type);
     CompileShader(compiledShader);
+
+    AcquireSRWLockExclusive(&CompiledShadersLock);
+
     CompiledShaders.Add(compiledShader);
+
+    ReleaseSRWLockExclusive(&CompiledShadersLock);
 
     return compiledShader;
 }
@@ -404,11 +417,12 @@ ComputeShaderPtr CompileCSFromFile(const wchar* path,
 
 bool UpdateShaders()
 {
-    if(ShaderFiles.Count() == 0)
+    uint64 numShaderFiles = ShaderFiles.Count();
+    if(numShaderFiles == 0)
         return false;
 
     static uint64 currFile = 0;
-    currFile = (currFile + 1) % uint64(ShaderFiles.Count());
+    currFile = (currFile + 1) % uint64(numShaderFiles);
 
     ShaderFile* file = ShaderFiles[currFile];
     const uint64 newTimeStamp = GetFileTimestamp(file->FilePath.c_str());
