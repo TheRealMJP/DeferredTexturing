@@ -120,7 +120,7 @@ namespace AppSettings
         bool32 ShowUVGradients;
     };
 
-    extern ConstantBuffer<AppSettingsCBuffer> CBuffer;
+    extern ConstantBuffer CBuffer;
     const extern uint32 CBufferRegister;
 
     void Initialize();

@@ -26,10 +26,30 @@ struct DeferredConstants
     uint NumComputeTilesX;
 };
 
+struct SRVIndexConstants
+{
+    uint SunShadowMapIdx;
+    uint SpotLightShadowMapIdx;
+    uint MaterialIndicesBufferIdx;
+    uint DecalBufferIdx;
+    uint DecalClusterBufferIdx;
+    uint SpotLightClusterBufferIdx;
+    uint NonMSAATilesIdx;
+    uint MSAATilesIdx;
+    uint TangentFrameMapIdx;
+    uint UVMapIdx;
+    uint UVGradientMapIdx;
+    uint MaterialIDMapIdx;
+    uint DepthMapIdx;
+    uint SkyMapIdx;
+    uint MSAAMaskBufferIdx;
+};
+
 ConstantBuffer<ShadingConstants> PSCBuffer : register(b0);
 ConstantBuffer<ShadowConstants> ShadowCBuffer : register(b1);
 ConstantBuffer<DeferredConstants> DeferredCBuffer : register(b2);
 ConstantBuffer<LightConstants> LightCBuffer : register(b3);
+ConstantBuffer<SRVIndexConstants> SRVIndices : register(b4);
 
 static const uint ThreadGroupSize = DeferredTileSize * DeferredTileSize;
 
@@ -43,31 +63,17 @@ struct TileMSAAMask
     uint Masks[DeferredTileMaskSize];
 };
 
-Texture2DArray<float> SunShadowMap : register(t0);
-Texture2DArray<float> SpotLightShadowMap : register(t1);
-StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffer : register(t2);
-StructuredBuffer<Decal> DecalBuffer : register(t3);
-ByteAddressBuffer DecalClusterBuffer : register(t4);
-ByteAddressBuffer SpotLightClusterBuffer : register(t5);
-StructuredBuffer<uint> NonMSAATiles : register(t6);
-StructuredBuffer<uint> MSAATiles : register(t7);
-#if MSAA_
-    Texture2DMS<float4> TangentFrameMap : register(t8);
-    Texture2DMS<float4> UVMap : register(t9);
-    Texture2DMS<float4> UVGradientMap : register(t10);
-    Texture2DMS<uint> MaterialIDMap : register(t11);
-    Texture2DMS<float> DepthMap : register(t12);
-    Texture2DMS<float4> SkyMap : register(t13);
-    StructuredBuffer<TileMSAAMask> MSAAMaskBuffer : register(t14);
-#else
-    Texture2D<float4> TangentFrameMap : register(t8);
-    Texture2D<float4> UVMap : register(t9);
-    Texture2D<float4> UVGradientMap : register(t10);
-    Texture2D<uint> MaterialIDMap : register(t11);
-    Texture2D<float> DepthMap : register(t12);
-#endif
+StructuredBuffer<MaterialTextureIndices> MaterialIndexBuffers[] : register(t0, space100);
+StructuredBuffer<Decal> DecalBuffers[] : register(t0, space101);
+StructuredBuffer<uint> NonMSAATileBuffers[] : register(t0, space102);
+StructuredBuffer<uint> MSAATileBuffers[] : register(t0, space103);
 
-Texture2D<float4> MaterialTextures[NumMaterialTextures_] : register(t15);
+#if MSAA_
+    Texture2DMS<uint> MaterialIDMaps[] : register(t0, space104);
+    StructuredBuffer<TileMSAAMask> MSAAMaskBuffers[] : register(t0, space105);
+#else
+    Texture2D<uint> MaterialIDMaps[] : register(t0, space104);
+#endif
 
 SamplerState AnisoSampler : register(s0);
 SamplerComparisonState ShadowSampler : register(s1);
@@ -116,29 +122,50 @@ float3 PositionFromDepth(in float zw, in float2 uv)
 // Shades a single sample point, given a pixel position and an MSAA subsample index
 void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
 {
-    Quaternion tangentFrame = UnpackQuaternion(MSAALoad_(TangentFrameMap, pixelPos, sampleIdx));
-    float2 uv = MSAALoad_(UVMap, pixelPos, sampleIdx).xy * DeferredUVScale;
-    uint packedMaterialID = MSAALoad_(MaterialIDMap, pixelPos, sampleIdx);
-    float zw = MSAALoad_(DepthMap, pixelPos, sampleIdx);
+    Texture2DArray sunShadowMap = Tex2DArrayTable[SRVIndices.SunShadowMapIdx];
+    Texture2DArray spotLightShadowMap = Tex2DArrayTable[SRVIndices.SpotLightShadowMapIdx];
+    StructuredBuffer<MaterialTextureIndices> materialIndicesBuffer = MaterialIndexBuffers[SRVIndices.MaterialIndicesBufferIdx];
+    StructuredBuffer<Decal> decalBuffer = DecalBuffers[SRVIndices.DecalBufferIdx];
+    ByteAddressBuffer decalClusterBuffer = RawBufferTable[SRVIndices.DecalClusterBufferIdx];
+    ByteAddressBuffer spotLightClusterBuffer = RawBufferTable[SRVIndices.SpotLightClusterBufferIdx];
+    #if MSAA_
+        Texture2DMS<float4> tangentFrameMap = Tex2DMSTable[SRVIndices.TangentFrameMapIdx];
+        Texture2DMS<float4> uvMap = Tex2DMSTable[SRVIndices.UVMapIdx];
+        Texture2DMS<float4> uvGradientMap = Tex2DMSTable[SRVIndices.UVGradientMapIdx];
+        Texture2DMS<uint> materialIDMap = MaterialIDMaps[SRVIndices.MaterialIDMapIdx];
+        Texture2DMS<float4> depthMap = Tex2DMSTable[SRVIndices.DepthMapIdx];
+        Texture2DMS<float4> skyMap = Tex2DMSTable[SRVIndices.SkyMapIdx];
+    #else
+        Texture2D tangentFrameMap = Tex2DTable[SRVIndices.TangentFrameMapIdx];
+        Texture2D uvMap = Tex2DTable[SRVIndices.UVMapIdx];
+        Texture2D uvGradientMap = Tex2DTable[SRVIndices.UVGradientMapIdx];
+        Texture2D<uint> materialIDMap = MaterialIDMaps[SRVIndices.MaterialIDMapIdx];
+        Texture2D depthMap = Tex2DTable[SRVIndices.DepthMapIdx];
+    #endif
+
+    Quaternion tangentFrame = UnpackQuaternion(MSAALoad_(tangentFrameMap, pixelPos, sampleIdx));
+    float2 uv = MSAALoad_(uvMap, pixelPos, sampleIdx).xy * DeferredUVScale;
+    uint packedMaterialID = MSAALoad_(materialIDMap, pixelPos, sampleIdx);
+    float zw = MSAALoad_(depthMap, pixelPos, sampleIdx).x;
 
     // Recover the tangent frame handedness from the material ID, and then reconstruct the w component
     float handedness = packedMaterialID & 0x80 ? -1.0f : 1.0f;
     float3x3 tangentFrameMatrix = QuatTo3x3(tangentFrame);
     tangentFrameMatrix._m10_m11_m12 *= handedness;
 
-    float2 zwGradients = MSAALoad_(UVMap, pixelPos, sampleIdx).zw;
+    float2 zwGradients = MSAALoad_(uvMap, pixelPos, sampleIdx).zw;
 
     #if ComputeUVGradients_
         // Compute gradients, trying not to walk off the edge of the triangle that isn't coplanar
-        float4 zwGradUp = MSAALoad_(UVMap, int2(pixelPos) + int2(0, -1), sampleIdx);
-        float4 zwGradDown = MSAALoad_(UVMap, int2(pixelPos) + int2(0, 1), sampleIdx);
-        float4 zwGradLeft = MSAALoad_(UVMap, int2(pixelPos) + int2(-1, 0), sampleIdx);
-        float4 zwGradRight = MSAALoad_(UVMap, int2(pixelPos) + int2(1, 0), sampleIdx);
+        float4 zwGradUp = MSAALoad_(uvMap, int2(pixelPos) + int2(0, -1), sampleIdx);
+        float4 zwGradDown = MSAALoad_(uvMap, int2(pixelPos) + int2(0, 1), sampleIdx);
+        float4 zwGradLeft = MSAALoad_(uvMap, int2(pixelPos) + int2(-1, 0), sampleIdx);
+        float4 zwGradRight = MSAALoad_(uvMap, int2(pixelPos) + int2(1, 0), sampleIdx);
 
-        uint matIDUp = MSAALoad_(MaterialIDMap, int2(pixelPos) + int2(0, -1), sampleIdx);
-        uint matIDDown = MSAALoad_(MaterialIDMap, int2(pixelPos) + int2(0, 1), sampleIdx);
-        uint matIDLeft = MSAALoad_(MaterialIDMap, int2(pixelPos) + int2(-1, 0), sampleIdx);
-        uint matIDRight = MSAALoad_(MaterialIDMap, int2(pixelPos) + int2(1, 0), sampleIdx);
+        uint matIDUp = MSAALoad_(materialIDMap, int2(pixelPos) + int2(0, -1), sampleIdx);
+        uint matIDDown = MSAALoad_(materialIDMap, int2(pixelPos) + int2(0, 1), sampleIdx);
+        uint matIDLeft = MSAALoad_(materialIDMap, int2(pixelPos) + int2(-1, 0), sampleIdx);
+        uint matIDRight = MSAALoad_(materialIDMap, int2(pixelPos) + int2(1, 0), sampleIdx);
 
         const float zwGradThreshold = 0.0025f;
         bool up = all(abs(zwGradUp.zw - zwGradients) <= zwGradThreshold) && (matIDUp == packedMaterialID);
@@ -179,7 +206,7 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
             uvDY.y += 2.0f;
     #else
         // Read the UV gradients from the G-Buffer
-        float4 uvGradients = MSAALoad_(UVGradientMap, pixelPos, sampleIdx);
+        float4 uvGradients = MSAALoad_(uvGradientMap, pixelPos, sampleIdx);
         float2 uvDX = uvGradients.xy;
         float2 uvDY = uvGradients.zw;
     #endif
@@ -199,11 +226,11 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
 
     uint materialID = packedMaterialID & 0x7F;
 
-    MaterialTextureIndices matIndices = MaterialIndicesBuffer[NonUniformResourceIndex(materialID)];
-    Texture2D<float4> AlbedoMap = MaterialTextures[NonUniformResourceIndex(matIndices.Albedo)];
-    Texture2D<float4> NormalMap = MaterialTextures[NonUniformResourceIndex(matIndices.Normal)];
-    Texture2D<float4> RoughnessMap = MaterialTextures[NonUniformResourceIndex(matIndices.Roughness)];
-    Texture2D<float4> MetallicMap = MaterialTextures[NonUniformResourceIndex(matIndices.Metallic)];
+    MaterialTextureIndices matIndices = materialIndicesBuffer[materialID];
+    Texture2D AlbedoMap = Tex2DTable[NonUniformResourceIndex(matIndices.Albedo)];
+    Texture2D NormalMap = Tex2DTable[NonUniformResourceIndex(matIndices.Normal)];
+    Texture2D RoughnessMap = Tex2DTable[NonUniformResourceIndex(matIndices.Roughness)];
+    Texture2D MetallicMap = Tex2DTable[NonUniformResourceIndex(matIndices.Metallic)];
 
     ShadingInput shadingInput;
     shadingInput.PositionSS = pixelPos;
@@ -218,9 +245,9 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
     shadingInput.RoughnessMap = RoughnessMap.SampleGrad(AnisoSampler, uv, uvDX, uvDY).x;
     shadingInput.MetallicMap = MetallicMap.SampleGrad(AnisoSampler, uv, uvDX, uvDY).x;
 
-    shadingInput.DecalBuffer = DecalBuffer;
-    shadingInput.DecalClusterBuffer = DecalClusterBuffer;
-    shadingInput.SpotLightClusterBuffer = SpotLightClusterBuffer;
+    shadingInput.DecalBuffer = decalBuffer;
+    shadingInput.DecalClusterBuffer = decalClusterBuffer;
+    shadingInput.SpotLightClusterBuffer = spotLightClusterBuffer;
 
     shadingInput.AnisoSampler = AnisoSampler;
 
@@ -228,11 +255,11 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
     shadingInput.ShadowCBuffer = ShadowCBuffer;
     shadingInput.LightCBuffer = LightCBuffer;
 
-    float3 shadingResult = ShadePixel(shadingInput, SunShadowMap, SpotLightShadowMap, ShadowSampler);
+    float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowSampler);
 
     #if MSAA_
         if(zw >= 1.0f)
-            shadingResult = MSAALoad_(SkyMap, pixelPos, sampleIdx).xyz;
+            shadingResult = MSAALoad_(skyMap, pixelPos, sampleIdx).xyz;
     #endif
 
     #if ShadePerSample_
@@ -263,12 +290,16 @@ void DeferredCS(in uint3 DispatchID : SV_DispatchThreadID, in uint GroupIndex : 
                 in uint3 GroupID : SV_GroupID, in uint3 GroupThreadID : SV_GroupThreadID)
 {
     #if MSAA_
+        StructuredBuffer<uint> msaaTiles = MSAATileBuffers[SRVIndices.MSAATilesIdx];
+        StructuredBuffer<uint> nonMSAATiles = NonMSAATileBuffers[SRVIndices.NonMSAATilesIdx];
+        StructuredBuffer<TileMSAAMask> msaaMaskBuffer = MSAAMaskBuffers[SRVIndices.MSAAMaskBufferIdx];
+
         // When MSAA is enabled, we have list of Edge and non-Edge tiles in a buffer and we use
         // ExecuteIndirect to dispatch the appropriate number of thread groups for each case
         #if ShadePerSample_
-            const uint packedTilePos = MSAATiles[GroupID.x];
+            const uint packedTilePos = msaaTiles[GroupID.x];
         #else
-            const uint packedTilePos = NonMSAATiles[GroupID.x];
+            const uint packedTilePos = nonMSAATiles[GroupID.x];
         #endif
         const uint2 tilePos = uint2(packedTilePos & 0xFFFF, packedTilePos >> 16);
         const uint2 pixelPos = tilePos * DeferredTileSize + GroupThreadID.xy;
@@ -276,7 +307,7 @@ void DeferredCS(in uint3 DispatchID : SV_DispatchThreadID, in uint GroupIndex : 
         #if ShadePerSample_
             // See if the pixel we're working on is an edge pixel
             const uint tileIdx = tilePos.y * DeferredCBuffer.NumComputeTilesX + tilePos.x;
-            TileMSAAMask tileMask = MSAAMaskBuffer[tileIdx];
+            TileMSAAMask tileMask = msaaMaskBuffer[tileIdx];
             const uint msaaEdge = tileMask.Masks[GroupIndex / 32] & (1 << (GroupIndex % 32));
             const uint numMSAASamples = msaaEdge ? NumMSAASamples_ : 1;
         #else
@@ -311,9 +342,6 @@ void DeferredCS(in uint3 DispatchID : SV_DispatchThreadID, in uint GroupIndex : 
         const uint numSamples = NumMSAAPixels * extraSamples;
 
         // Shade the rest of the samples for edge pixels
-        // NOTE:  this loop is unrolled to work around an issue with the shader compiler where
-        //        optimization fails to converge
-        [unroll(extraSamples)]
         for(uint msaaPixelIdx = GroupIndex; msaaPixelIdx < numSamples; msaaPixelIdx += ThreadGroupSize)
         {
             uint listIdx = msaaPixelIdx / extraSamples;

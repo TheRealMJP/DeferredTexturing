@@ -8,7 +8,7 @@
             "folder_exclude_patterns": ["Debug", "Release", "bin", "obj", "Properties", "ipch", "x64", "ShaderCache"]
         },
         {
-            "path": "../SampleFramework12/v1.00/",
+            "path": "../SampleFramework12/v1.01/",
             "name": "SampleFramework",
             "file_exclude_patterns": ["*.sln", "*.vcxproj", "*.filters", "*.rc", "*.props", "*.user", "*.opensdf", "*.ico"],
             "folder_exclude_patterns": ["Debug", "Release", "bin", "obj", "Properties", "ipch", "x64", ".vs"]

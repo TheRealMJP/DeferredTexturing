@@ -32,23 +32,28 @@ struct MatIndexConstants
     uint MatIndex;
 };
 
+struct SRVIndexConstants
+{
+    uint SunShadowMapIdx;
+    uint SpotLightShadowMapIdx;
+    uint MaterialTextureIndicesIdx;
+    uint DecalBufferIdx;
+    uint DecalClusterBufferIdx;
+    uint SpotLightClusterBufferIdx;
+};
+
 ConstantBuffer<VSConstants> VSCBuffer : register(b0);
 ConstantBuffer<ShadingConstants> PSCBuffer : register(b0);
 ConstantBuffer<ShadowConstants> ShadowCBuffer : register(b1);
 ConstantBuffer<MatIndexConstants> MatIndexCBuffer : register(b2);
 ConstantBuffer<LightConstants> LightCBuffer : register(b3);
+ConstantBuffer<SRVIndexConstants> SRVIndices : register(b4);
 
 //=================================================================================================
 // Resources
 //=================================================================================================
-Texture2DArray<float> SunShadowMap : register(t0);
-Texture2DArray<float> SpotLightShadowMap : register(t1);
-StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffer : register(t2);
-StructuredBuffer<Decal> DecalBuffer : register(t3);
-ByteAddressBuffer DecalClusterBuffer : register(t4);
-ByteAddressBuffer SpotLightClusterBuffer : register(t5);
-
-Texture2D<float4> MaterialTextures[NumMaterialTextures_] : register(t6);
+StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffers[] : register(t0, space100);
+StructuredBuffer<Decal> DecalBuffers[] : register(t0, space101);
 
 SamplerState AnisoSampler : register(s0);
 SamplerComparisonState ShadowSampler : register(s1);
@@ -146,11 +151,12 @@ PSOutputForward PSForward(in PSInput input)
 	float3 bitangentWS = normalize(input.BitangentWS);
 	float3x3 tangentFrame = float3x3(tangentWS, bitangentWS, vtxNormalWS);
 
-    MaterialTextureIndices matIndices = MaterialIndicesBuffer[MatIndexCBuffer.MatIndex];
-    Texture2D<float4> AlbedoMap = MaterialTextures[matIndices.Albedo];
-    Texture2D<float4> NormalMap = MaterialTextures[matIndices.Normal];
-    Texture2D<float4> RoughnessMap = MaterialTextures[matIndices.Roughness];
-    Texture2D<float4> MetallicMap = MaterialTextures[matIndices.Metallic];
+    StructuredBuffer<MaterialTextureIndices> matIndicesBuffer = MaterialIndicesBuffers[SRVIndices.MaterialTextureIndicesIdx];
+    MaterialTextureIndices matIndices = matIndicesBuffer[MatIndexCBuffer.MatIndex];
+    Texture2D AlbedoMap = Tex2DTable[matIndices.Albedo];
+    Texture2D NormalMap = Tex2DTable[matIndices.Normal];
+    Texture2D RoughnessMap = Tex2DTable[matIndices.Roughness];
+    Texture2D MetallicMap = Tex2DTable[matIndices.Metallic];
 
     ShadingInput shadingInput;
     shadingInput.PositionSS = uint2(input.PositionSS.xy);
@@ -165,9 +171,9 @@ PSOutputForward PSForward(in PSInput input)
     shadingInput.RoughnessMap = RoughnessMap.Sample(AnisoSampler, input.UV).x;
     shadingInput.MetallicMap = MetallicMap.Sample(AnisoSampler, input.UV).x;
 
-    shadingInput.DecalBuffer = DecalBuffer;
-    shadingInput.DecalClusterBuffer = DecalClusterBuffer;
-    shadingInput.SpotLightClusterBuffer = SpotLightClusterBuffer;
+    shadingInput.DecalBuffer = DecalBuffers[SRVIndices.DecalBufferIdx];
+    shadingInput.DecalClusterBuffer = RawBufferTable[SRVIndices.DecalClusterBufferIdx];
+    shadingInput.SpotLightClusterBuffer = RawBufferTable[SRVIndices.SpotLightClusterBufferIdx];
 
     shadingInput.AnisoSampler = AnisoSampler;
 
@@ -175,7 +181,10 @@ PSOutputForward PSForward(in PSInput input)
     shadingInput.ShadowCBuffer = ShadowCBuffer;
     shadingInput.LightCBuffer = LightCBuffer;
 
-    float3 shadingResult = ShadePixel(shadingInput, SunShadowMap, SpotLightShadowMap, ShadowSampler);
+    Texture2DArray sunShadowMap = Tex2DArrayTable[SRVIndices.SunShadowMapIdx];
+    Texture2DArray spotLightShadowMap = Tex2DArrayTable[SRVIndices.SpotLightShadowMapIdx];
+
+    float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowSampler);
 
     if(AppSettings.ShowUVGradients)
         shadingResult = abs(float3(ddx(input.UV), ddy(input.UV).x)) * 64.0f;

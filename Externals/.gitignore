@@ -20,3 +20,5 @@ sun/source/x64/
 *.opensdf
 *.suo
 *.vcproj.user
+
+DXCompiler

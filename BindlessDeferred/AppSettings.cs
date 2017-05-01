@@ -68,6 +68,7 @@ public class Settings
     public class AntiAliasing
     {
         [HelpText("MSAA mode to use for rendering")]
+        [DisplayName("MSAA Mode")]
         MSAAModes MSAAMode = MSAAModes.MSAANone;
     }
 

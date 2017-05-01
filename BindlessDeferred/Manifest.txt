@@ -1,0 +1,16 @@
+[References]
+SampleFramework12\v1.01
+
+[Local]
+
+SharedTypes.h
+
+[Content]
+
+Models\Sponza\Sponza.fbx
+Models\Sponza\*.png
+Textures\Decals\*.tga
+Textures\Decals\*.png
+
+[Externals]
+

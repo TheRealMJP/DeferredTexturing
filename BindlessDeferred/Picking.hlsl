@@ -8,6 +8,7 @@
 //
 //=================================================================================================
 
+#include <DescriptorTables.hlsl>
 #include <Quaternion.hlsl>
 
 struct PickingConstants
@@ -15,6 +16,8 @@ struct PickingConstants
     row_major float4x4 InverseViewProjection;
     uint2 PixelPos;
     float2 RTSize;
+    uint TangentMapIdx;
+    uint DepthMapIdx;
 };
 
 ConstantBuffer<PickingConstants> CBuffer : register(b0);
@@ -25,25 +28,23 @@ struct PickingData
     float3 Normal;
 };
 
-#if MSAA_
-    Texture2DMS<float4> TangentMap : register(t0);
-    Texture2DMS<float> DepthMap : register(t1);
-#else
-    Texture2D<float4> TangentMap : register(t0);
-    Texture2D<float> DepthMap : register(t1);
-#endif
-
 RWStructuredBuffer<PickingData> PickingBuffer : register(u0);
 
 [numthreads(1, 1, 1)]
 void PickingCS()
 {
     #if MSAA_
-        float zw = DepthMap.Load(CBuffer.PixelPos, 0);
-        Quaternion tangentFrame = UnpackQuaternion(TangentMap.Load(CBuffer.PixelPos, 0));
+        Texture2DMS<float4> tangentMap = Tex2DMSTable[CBuffer.TangentMapIdx];
+        Texture2DMS<float4> depthMap = Tex2DMSTable[CBuffer.DepthMapIdx];
+
+        float zw = depthMap.Load(CBuffer.PixelPos, 0).x;
+        Quaternion tangentFrame = UnpackQuaternion(tangentMap.Load(CBuffer.PixelPos, 0));
     #else
-        float zw = DepthMap[CBuffer.PixelPos];
-        Quaternion tangentFrame = UnpackQuaternion(TangentMap[CBuffer.PixelPos]);
+        Texture2D tangentMap = Tex2DTable[CBuffer.TangentMapIdx];
+        Texture2D depthMap = Tex2DTable[CBuffer.DepthMapIdx];
+
+        float zw = depthMap[CBuffer.PixelPos].x;
+        Quaternion tangentFrame = UnpackQuaternion(tangentMap[CBuffer.PixelPos]);
     #endif
 
     float2 uv = (CBuffer.PixelPos + 0.5f) / CBuffer.RTSize;

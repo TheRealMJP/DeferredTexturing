@@ -26,16 +26,25 @@ static const uint64 SpotLightShadowMapSize = 1024;
 
 enum MainPassRootParams
 {
-    MainPass_MatIndexCBuffer,
+    MainPass_StandardDescriptors,
+    MainPass_VSCBuffer,
     MainPass_PSCBuffer,
     MainPass_ShadowCBuffer,
+    MainPass_MatIndexCBuffer,
     MainPass_LightCBuffer,
+    MainPass_SRVIndices,
     MainPass_AppSettings,
-    MainPass_SRV,
-    MainPass_Decals,
-    MainPass_VSCBuffer,
 
     NumMainPassRootParams,
+};
+
+struct MeshVSConstants
+{
+    Float4Align Float4x4 World;
+    Float4Align Float4x4 View;
+    Float4Align Float4x4 WorldViewProjection;
+    float NearClip = 0.0f;
+    float FarClip = 0.0f;
 };
 
 // Used to sort by depth
@@ -132,19 +141,17 @@ MeshRenderer::MeshRenderer()
 void MeshRenderer::LoadShaders()
 {
     // Load the mesh shaders
-    meshDepthVS = CompileFromFile(L"DepthOnly.hlsl", "VS", ShaderType::Vertex, ShaderProfile::SM51);
+    meshDepthVS = CompileFromFile(L"DepthOnly.hlsl", "VS", ShaderType::Vertex);
 
     CompileOptions opts;
-    opts.Add("NumMaterialTextures_", uint32(model->MaterialTextures().Count()));
     opts.Add("OutputUVGradients_", 1);
-    meshVS = CompileFromFile(L"Mesh.hlsl", "VS", ShaderType::Vertex, ShaderProfile::SM51, opts);
-    meshPSForward = CompileFromFile(L"Mesh.hlsl", "PSForward", ShaderType::Pixel, ShaderProfile::SM51, opts);
-    meshPSGBuffer[0] = CompileFromFile(L"Mesh.hlsl", "PSGBuffer", ShaderType::Pixel, ShaderProfile::SM51, opts);
+    meshVS = CompileFromFile(L"Mesh.hlsl", "VS", ShaderType::Vertex, opts);
+    meshPSForward = CompileFromFile(L"Mesh.hlsl", "PSForward", ShaderType::Pixel, opts);
+    meshPSGBuffer[0] = CompileFromFile(L"Mesh.hlsl", "PSGBuffer", ShaderType::Pixel, opts);
 
     opts.Reset();
-    opts.Add("NumMaterialTextures_", uint32(model->MaterialTextures().Count()));
     opts.Add("OutputUVGradients_", 0);
-    meshPSGBuffer[1] = CompileFromFile(L"Mesh.hlsl", "PSGBuffer", ShaderType::Pixel, ShaderProfile::SM51, opts);
+    meshPSGBuffer[1] = CompileFromFile(L"Mesh.hlsl", "PSGBuffer", ShaderType::Pixel, opts);
 }
 
 // Loads resources
@@ -165,10 +172,6 @@ void MeshRenderer::Initialize(const Model* model_)
         boundingBox.Center = center.ToXMFLOAT3();
         boundingBox.Extents = extents.ToXMFLOAT3();
     }
-
-    meshVSConstants.Initialize(BufferLifetime::Temporary);
-    meshPSConstants.Initialize(BufferLifetime::Temporary);
-    sunShadowConstants.Initialize(BufferLifetime::Temporary);
 
     LoadShaders();
 
@@ -191,17 +194,16 @@ void MeshRenderer::Initialize(const Model* model_)
             MaterialTextureIndices& matIndices = textureIndices[i];
             const MeshMaterial& material = materials[i];
 
-            matIndices.Albedo = material.TextureIndices[uint64(MaterialTextures::Albedo)];
-            matIndices.Normal = material.TextureIndices[uint64(MaterialTextures::Normal)];
-            matIndices.Roughness = material.TextureIndices[uint64(MaterialTextures::Roughness)];
-            matIndices.Metallic = material.TextureIndices[uint64(MaterialTextures::Metallic)];
+            matIndices.Albedo = material.Textures[uint64(MaterialTextures::Albedo)]->SRV;
+            matIndices.Normal = material.Textures[uint64(MaterialTextures::Normal)]->SRV;
+            matIndices.Roughness = material.Textures[uint64(MaterialTextures::Roughness)]->SRV;
+            matIndices.Metallic = material.Textures[uint64(MaterialTextures::Metallic)]->SRV;
         }
 
         StructuredBufferInit sbInit;
         sbInit.Stride = sizeof(MaterialTextureIndices);
         sbInit.NumElements = numMaterials;
         sbInit.Dynamic = false;
-        sbInit.Lifetime = BufferLifetime::Persistent;
         sbInit.InitData = textureIndices.Data();
         materialTextureIndices.Initialize(sbInit);
         materialTextureIndices.Resource()->SetName(L"Material Texture Indices");
@@ -209,51 +211,34 @@ void MeshRenderer::Initialize(const Model* model_)
 
     {
         // Main pass root signature
-        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
-        srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        srvRanges[0].NumDescriptors = uint32(6 + numMaterialTextures);
-        srvRanges[0].BaseShaderRegister = 0;
-        srvRanges[0].RegisterSpace = 0;
-        srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-        D3D12_DESCRIPTOR_RANGE1 decalTextureRanges[1] = {};
-        decalTextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        decalTextureRanges[0].NumDescriptors = AppSettings::NumDecalTextures;
-        decalTextureRanges[0].BaseShaderRegister = 0;
-        decalTextureRanges[0].RegisterSpace = 1;
-        decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
         D3D12_ROOT_PARAMETER1 rootParameters[NumMainPassRootParams] = {};
+
+        // "Standard"  descriptor table
+        rootParameters[MainPass_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[MainPass_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[MainPass_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
 
         // VSCBuffer
         rootParameters[MainPass_VSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         rootParameters[MainPass_VSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
         rootParameters[MainPass_VSCBuffer].Descriptor.RegisterSpace = 0;
         rootParameters[MainPass_VSCBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[MainPass_VSCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         // PSCBuffer
         rootParameters[MainPass_PSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         rootParameters[MainPass_PSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         rootParameters[MainPass_PSCBuffer].Descriptor.RegisterSpace = 0;
         rootParameters[MainPass_PSCBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[MainPass_PSCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         // ShadowCBuffer
         rootParameters[MainPass_ShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         rootParameters[MainPass_ShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         rootParameters[MainPass_ShadowCBuffer].Descriptor.RegisterSpace = 0;
         rootParameters[MainPass_ShadowCBuffer].Descriptor.ShaderRegister = 1;
-
-        // LightCBuffer
-        rootParameters[MainPass_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[MainPass_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPass_LightCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[MainPass_LightCBuffer].Descriptor.ShaderRegister = 3;
-
-        // AppSettings
-        rootParameters[MainPass_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[MainPass_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPass_AppSettings].Descriptor.RegisterSpace = 0;
-        rootParameters[MainPass_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[MainPass_ShadowCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         // MatIndexCBuffer
         rootParameters[MainPass_MatIndexCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -262,17 +247,26 @@ void MeshRenderer::Initialize(const Model* model_)
         rootParameters[MainPass_MatIndexCBuffer].Constants.RegisterSpace = 0;
         rootParameters[MainPass_MatIndexCBuffer].Constants.ShaderRegister = 2;
 
-        // SRV descriptors
-        rootParameters[MainPass_SRV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[MainPass_SRV].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPass_SRV].DescriptorTable.pDescriptorRanges = srvRanges;
-        rootParameters[MainPass_SRV].DescriptorTable.NumDescriptorRanges = 1;
+        // LightCBuffer
+        rootParameters[MainPass_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_LightCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_LightCBuffer].Descriptor.ShaderRegister = 3;
+        rootParameters[MainPass_LightCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
 
-        // Decal texture descriptors
-        rootParameters[MainPass_Decals].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[MainPass_Decals].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[MainPass_Decals].DescriptorTable.pDescriptorRanges = decalTextureRanges;
-        rootParameters[MainPass_Decals].DescriptorTable.NumDescriptorRanges = 1;
+        // SRV descriptor indices
+        rootParameters[MainPass_SRVIndices].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_SRVIndices].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_SRVIndices].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_SRVIndices].Descriptor.ShaderRegister = 4;
+        rootParameters[MainPass_SRVIndices].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
+
+        // AppSettings
+        rootParameters[MainPass_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MainPass_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[MainPass_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[MainPass_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[MainPass_AppSettings].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         D3D12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0);
@@ -458,79 +452,54 @@ void MeshRenderer::RenderMainPass(ID3D12GraphicsCommandList* cmdList, const Came
     cmdList->SetPipelineState(mainPassPSO);
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
+    DX12::BindStandardDescriptorTable(cmdList, MainPass_StandardDescriptors, CmdListMode::Graphics);
+
     Float4x4 world;
 
     // Set constant buffers
-    meshVSConstants.Data.World = world;
-    meshVSConstants.Data.View = camera.ViewMatrix();
-    meshVSConstants.Data.WorldViewProjection = world * camera.ViewProjectionMatrix();
-    meshVSConstants.Upload();
-    meshVSConstants.SetAsGfxRootParameter(cmdList, MainPass_VSCBuffer);
+    MeshVSConstants vsConstants;
+    vsConstants.World = world;
+    vsConstants.View = camera.ViewMatrix();
+    vsConstants.WorldViewProjection = world * camera.ViewProjectionMatrix();
+    DX12::BindTempConstantBuffer(cmdList, vsConstants, MainPass_VSCBuffer, CmdListMode::Graphics);
 
-    meshPSConstants.Data.SunDirectionWS = AppSettings::SunDirection;
-    meshPSConstants.Data.SunIrradiance = mainPassData.SkyCache->SunIrradiance;
-    meshPSConstants.Data.CosSunAngularRadius = std::cos(DegToRad(AppSettings::SunSize));
-    meshPSConstants.Data.SinSunAngularRadius = std::sin(DegToRad(AppSettings::SunSize));
-    meshPSConstants.Data.CameraPosWS = camera.Position();
+    ShadingConstants psConstants;
+    psConstants.SunDirectionWS = AppSettings::SunDirection;
+    psConstants.SunIrradiance = mainPassData.SkyCache->SunIrradiance;
+    psConstants.CosSunAngularRadius = std::cos(DegToRad(AppSettings::SunSize));
+    psConstants.SinSunAngularRadius = std::sin(DegToRad(AppSettings::SunSize));
+    psConstants.CameraPosWS = camera.Position();
 
-    meshPSConstants.Data.CursorDecalPos = mainPassData.CursorDecal.Position;
-    meshPSConstants.Data.CursorDecalIntensity = mainPassData.CursorDecalIntensity;
-    meshPSConstants.Data.CursorDecalOrientation = mainPassData.CursorDecal.Orientation;
-    meshPSConstants.Data.CursorDecalSize = mainPassData.CursorDecal.Size;
-    meshPSConstants.Data.CursorDecalType = mainPassData.CursorDecal.Type;
-    meshPSConstants.Data.NumXTiles = uint32(AppSettings::NumXTiles);
-    meshPSConstants.Data.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
-    meshPSConstants.Data.NearClip = camera.NearClip();
-    meshPSConstants.Data.FarClip = camera.FarClip();
+    psConstants.CursorDecalPos = mainPassData.CursorDecal.Position;
+    psConstants.CursorDecalIntensity = mainPassData.CursorDecalIntensity;
+    psConstants.CursorDecalOrientation = mainPassData.CursorDecal.Orientation;
+    psConstants.CursorDecalSize = mainPassData.CursorDecal.Size;
+    psConstants.CursorDecalTexIdx = mainPassData.CursorDecal.AlbedoTexIdx;
+    psConstants.NumXTiles = uint32(AppSettings::NumXTiles);
+    psConstants.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
+    psConstants.NearClip = camera.NearClip();
+    psConstants.FarClip = camera.FarClip();
 
-    meshPSConstants.Data.SkySH = mainPassData.SkyCache->SH;
-    meshPSConstants.Upload();
-    meshPSConstants.SetAsGfxRootParameter(cmdList, MainPass_PSCBuffer);
+    psConstants.SkySH = mainPassData.SkyCache->SH;
+    DX12::BindTempConstantBuffer(cmdList, psConstants, MainPass_PSCBuffer, CmdListMode::Graphics);
 
-    sunShadowConstants.Upload();
-    sunShadowConstants.SetAsGfxRootParameter(cmdList, MainPass_ShadowCBuffer);
+    DX12::BindTempConstantBuffer(cmdList, sunShadowConstants, MainPass_ShadowCBuffer, CmdListMode::Graphics);
 
     cmdList->SetGraphicsRootConstantBufferView(MainPass_LightCBuffer, mainPassData.SpotLightBuffer->InternalBuffer.GPUAddress);
 
     AppSettings::BindCBufferGfx(cmdList, MainPass_AppSettings);
 
-    D3D12_CPU_DESCRIPTOR_HANDLE psSRVs[] =
+    uint32 psSRVs[] =
     {
         sunShadowMap.SRV(),
         spotLightShadowMap.SRV(),
-        materialTextureIndices.SRV(),
-        mainPassData.DecalBuffer->SRV(),
-        mainPassData.DecalClusterBuffer->SRV(),
-        mainPassData.SpotLightClusterBuffer->SRV(),
+        materialTextureIndices.SRV,
+        mainPassData.DecalBuffer->SRV,
+        mainPassData.DecalClusterBuffer->SRV,
+        mainPassData.SpotLightClusterBuffer->SRV,
     };
 
-    // We need to get everything into a contiguous shader-visible descriptor table
-    const uint64 numMaterialTextures = model->MaterialTextures().Count();
-    LinearDescriptorHeap& descriptorHeap = DX12::SRVDescriptorHeapGPU[DX12::CurrFrameIdx];
-    DescriptorHandle tableStart = descriptorHeap.Allocate(ArraySize_(psSRVs) + numMaterialTextures);
-
-    // First the non-material SRVs
-    for(uint64 i = 0; i < ArraySize_(psSRVs); ++i)
-    {
-        D3D12_CPU_DESCRIPTOR_HANDLE dstDescriptor = tableStart.CPUHandle;
-        dstDescriptor.ptr += i * DX12::SRVDescriptorSize;
-        DX12::Device->CopyDescriptorsSimple(1, dstDescriptor, psSRVs[i], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    // And now the material textures
-    D3D12_CPU_DESCRIPTOR_HANDLE srcMaterialTextures = model->MaterialTextureDescriptors();
-    D3D12_CPU_DESCRIPTOR_HANDLE dstMaterialTextures = tableStart.CPUHandle;
-    dstMaterialTextures.ptr += ArraySize_(psSRVs) * DX12::SRVDescriptorSize;
-    DX12::Device->CopyDescriptorsSimple(uint32(numMaterialTextures), dstMaterialTextures, srcMaterialTextures, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-    cmdList->SetGraphicsRootDescriptorTable(MainPass_SRV, tableStart.GPUHandle);
-
-    // Bind the decal textures
-    D3D12_CPU_DESCRIPTOR_HANDLE decalDescriptors[AppSettings::NumDecalTextures] = { };
-    for(uint64 i = 0; i < AppSettings::NumDecalTextures; ++i)
-        decalDescriptors[i] = mainPassData.DecalTextures[i].SRV.CPUHandle;
-
-    DX12::BindShaderResources(cmdList, MainPass_Decals, AppSettings::NumDecalTextures, decalDescriptors);
+    DX12::BindTempConstantBuffer(cmdList, psSRVs, MainPass_SRVIndices, CmdListMode::Graphics);
 
     // Bind vertices and indices
     D3D12_VERTEX_BUFFER_VIEW vbView = model->VertexBuffer().VBView();
@@ -578,13 +547,13 @@ void MeshRenderer::RenderGBuffer(ID3D12GraphicsCommandList* cmdList, const Camer
     Float4x4 world;
 
     // Set constant buffers
-    meshVSConstants.Data.World = world;
-    meshVSConstants.Data.View = camera.ViewMatrix();
-    meshVSConstants.Data.WorldViewProjection = world * camera.ViewProjectionMatrix();
-    meshVSConstants.Data.NearClip = camera.NearClip();
-    meshVSConstants.Data.FarClip = camera.FarClip();
-    meshVSConstants.Upload();
-    meshVSConstants.SetAsGfxRootParameter(cmdList, 0);
+    MeshVSConstants vsConstants;
+    vsConstants.World = world;
+    vsConstants.View = camera.ViewMatrix();
+    vsConstants.WorldViewProjection = world * camera.ViewProjectionMatrix();
+    vsConstants.NearClip = camera.NearClip();
+    vsConstants.FarClip = camera.FarClip();
+    DX12::BindTempConstantBuffer(cmdList, vsConstants, 0, CmdListMode::Graphics);
 
     // Bind vertices and indices
     D3D12_VERTEX_BUFFER_VIEW vbView = model->VertexBuffer().VBView();
@@ -623,11 +592,11 @@ void MeshRenderer::RenderDepth(ID3D12GraphicsCommandList* cmdList, const Camera&
     Float4x4 world;
 
     // Set constant buffers
-    meshVSConstants.Data.World = world;
-    meshVSConstants.Data.View = camera.ViewMatrix();
-    meshVSConstants.Data.WorldViewProjection = world * camera.ViewProjectionMatrix();
-    meshVSConstants.Upload();
-    meshVSConstants.SetAsGfxRootParameter(cmdList, 0);
+    MeshVSConstants vsConstants;
+    vsConstants.World = world;
+    vsConstants.View = camera.ViewMatrix();
+    vsConstants.WorldViewProjection = world * camera.ViewProjectionMatrix();
+    DX12::BindTempConstantBuffer(cmdList, vsConstants, 0, CmdListMode::Graphics);
 
     // Bind vertices and indices
     D3D12_VERTEX_BUFFER_VIEW vbView = model->VertexBuffer().VBView();
@@ -683,7 +652,7 @@ void MeshRenderer::RenderSunShadowMap(ID3D12GraphicsCommandList* cmdList, const 
     ProfileBlock profileBlock(cmdList, "Sun Shadow Map Rendering");
 
     OrthographicCamera cascadeCameras[NumCascades];
-    PrepareShadowCascades(AppSettings::SunDirection, SunShadowMapSize, true, camera, sunShadowConstants.Data, cascadeCameras);
+    PrepareShadowCascades(AppSettings::SunDirection, SunShadowMapSize, true, camera, sunShadowConstants, cascadeCameras);
 
     // Render the meshes to each cascade
     for(uint64 cascadeIdx = 0; cascadeIdx < NumCascades; ++cascadeIdx)
@@ -694,7 +663,7 @@ void MeshRenderer::RenderSunShadowMap(ID3D12GraphicsCommandList* cmdList, const 
         DX12::SetViewport(cmdList, SunShadowMapSize, SunShadowMapSize);
 
         // Set the shadow map as the depth target
-        D3D12_CPU_DESCRIPTOR_HANDLE dsv = sunShadowMap.ArrayDSVs[cascadeIdx].CPUHandle;
+        D3D12_CPU_DESCRIPTOR_HANDLE dsv = sunShadowMap.ArrayDSVs[cascadeIdx];
         cmdList->OMSetRenderTargets(0, nullptr, false, &dsv);
         cmdList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
@@ -720,7 +689,7 @@ void MeshRenderer::RenderSpotLightShadowMap(ID3D12GraphicsCommandList* cmdList, 
         DX12::SetViewport(cmdList, SpotLightShadowMapSize, SpotLightShadowMapSize);
 
         // Set the shadow map as the depth target
-        D3D12_CPU_DESCRIPTOR_HANDLE dsv = spotLightShadowMap.ArrayDSVs[i].CPUHandle;
+        D3D12_CPU_DESCRIPTOR_HANDLE dsv = spotLightShadowMap.ArrayDSVs[i];
         cmdList->OMSetRenderTargets(0, nullptr, false, &dsv);
         cmdList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 

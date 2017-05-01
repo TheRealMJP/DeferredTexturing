@@ -21,10 +21,10 @@
 #include <Graphics/Sampling.h>
 #include <Graphics/DX12.h>
 #include <Graphics/DX12_Helpers.h>
+#include <EnkiTS/TaskScheduler_c.h>
 
 #include "BindlessDeferred.h"
 #include "SharedTypes.h"
-#include "EnkiTS/TaskScheduler_c.h"
 
 using namespace SampleFramework12;
 using std::wstring;
@@ -48,6 +48,7 @@ static const uint64 NumConeSides = 16;
 
 static enkiTaskScheduler* taskScheduler = nullptr;
 static enkiTaskSet* taskSet = nullptr;
+static const bool EnableMultithreadedCompilation = true;
 
 struct PickingData
 {
@@ -55,17 +56,130 @@ struct PickingData
     Float3 Normal;
 };
 
-enum DeferredRootParams
+struct LightConstants
 {
-    Deferred_DeferredCBuffer,
-    Deferred_PSCBuffer,
-    Deferred_ShadowCBuffer,
-    Deferred_LightCBuffer,
-    Deferred_AppSettings,
-    Deferred_Descriptors,
-    Deferred_DecalDescriptors,
+    SpotLight Lights[AppSettings::MaxSpotLights];
+    Float4x4 ShadowMatrices[AppSettings::MaxSpotLights];
+};
+
+struct ClusterConstants
+{
+    Float4x4 ViewProjection;
+    Float4x4 InvProjection;
+    float NearClip = 0.0f;
+    float FarClip = 0.0f;
+    float InvClipRange = 0.0f;
+    uint32 NumXTiles = 0;
+    uint32 NumYTiles = 0;
+    uint32 NumXYTiles = 0;
+    uint32 ElementsPerCluster = 0;
+    uint32 InstanceOffset = 0;
+    uint32 NumLights = 0;
+    uint32 NumDecals = 0;
+
+    uint32 BoundsBufferIdx = uint32(-1);
+    uint32 VertexBufferIdx = uint32(-1);
+    uint32 InstanceBufferIdx = uint32(-1);
+};
+
+struct MSAAMaskConstants
+{
+    uint32 NumXTiles = 0;
+    uint32 MaterialIDMapIdx = uint32(-1);
+    uint32 UVMapIdx = uint32(-1);
+};
+
+struct DeferredConstants
+{
+    Float4x4 InvViewProj;
+    Float4x4 Projection;
+    Float2 RTSize;
+    uint32 NumComputeTilesX = 0;
+};
+
+struct PickingConstants
+{
+    Float4x4 InverseViewProjection;
+    Uint2 PixelPos;
+    Float2 RTSize;
+    uint32 TangentMapIdx = uint32(-1);
+    uint32 DepthMapIdx = uint32(-1);
+};
+
+struct ClusterVisConstants
+{
+    Float4x4 Projection;
+    Float3 ViewMin;
+    float NearClip = 0.0f;
+    Float3 ViewMax;
+    float InvClipRange = 0.0f;
+    Float2 DisplaySize;
+    uint32 NumXTiles = 0;
+    uint32 NumXYTiles = 0;
+
+    uint32 DecalClusterBufferIdx = uint32(-1);
+    uint32 SpotLightClusterBufferIdx = uint32(-1);
+};
+
+enum ClusterRootParams : uint32
+{
+    ClusterParams_StandardDescriptors,
+    ClusterParams_UAVDescriptors,
+    ClusterParams_CBuffer,
+    ClusterParams_AppSettings,
+
+    NumClusterRootParams,
+};
+
+enum MSAAMaskRootParams : uint32
+{
+    MSAAMaskParams_StandardDescriptors,
+    MSAAMaskParams_UAVDescriptors,
+    MSAAMaskParams_CBuffer,
+    MSAAMaskParams_AppSettings,
+
+    NumMSAAMaskRootParams
+};
+
+enum DeferredRootParams : uint32
+{
+    DeferredParams_StandardDescriptors,
+    DeferredParams_PSCBuffer,
+    DeferredParams_ShadowCBuffer,
+    DeferredParams_DeferredCBuffer,
+    DeferredParams_LightCBuffer,
+    DeferredParams_SRVIndices,
+    DeferredParams_UAVDescriptors,
+    DeferredParams_AppSettings,
 
     NumDeferredRootParams
+};
+
+enum PickingRootParams : uint32
+{
+    PickingParams_StandardDescriptors,
+    PickingParams_UAVDescriptors,
+    PickingParams_CBuffer,
+
+    NumPickingRootParams
+};
+
+enum ClusterVisRootParams : uint32
+{
+    ClusterVisParams_StandardDescriptors,
+    ClusterVisParams_CBuffer,
+    ClusterVisParams_AppSettings,
+
+    NumClusterVisRootParams,
+};
+
+enum ResolveRootParams : uint32
+{
+    ResolveParams_StandardDescriptors,
+    ResolveParams_Constants,
+    ResolveParams_AppSettings,
+
+    NumResolveRootParams
 };
 
 // Returns true if a sphere intersects a capped cone defined by a direction, height, and angle
@@ -88,7 +202,7 @@ static bool SphereConeIntersection(const Float3& coneTip, const Float3& coneDir,
     return e < sphereRadius;
 }
 
-BindlessDeferred::BindlessDeferred() :  App(L"Bindless Deferred Texturing")
+BindlessDeferred::BindlessDeferred(const wchar* cmdLine) : App(L"Bindless Deferred Texturing", cmdLine)
 {
     minFeatureLevel = D3D_FEATURE_LEVEL_11_1;
     globalHelpText = "Bindless Deferred Texturing\n\n"
@@ -156,9 +270,9 @@ void BindlessDeferred::Initialize()
         StructuredBufferInit sbInit;
         sbInit.Stride = sizeof(Decal);
         sbInit.NumElements = AppSettings::MaxDecals;
-        sbInit.Dynamic = false;
-        sbInit.Lifetime = BufferLifetime::Persistent;
-        sbInit.InitialState = D3D12_RESOURCE_STATE_COPY_DEST;
+        sbInit.Dynamic = true;
+        sbInit.GPUWritable = true;
+        sbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
         decalBuffer.Initialize(sbInit);
         decalBuffer.Resource()->SetName(L"Decal Buffer");
     }
@@ -169,7 +283,7 @@ void BindlessDeferred::Initialize()
         sbInit.Stride = sizeof(ClusterBounds);
         sbInit.NumElements = AppSettings::MaxDecals;
         sbInit.Dynamic = true;
-        sbInit.Lifetime = BufferLifetime::Temporary;
+        sbInit.GPUWritable = false;
         decalBoundsBuffer.Initialize(sbInit);
 
         sbInit.Stride = sizeof(uint32);
@@ -182,7 +296,7 @@ void BindlessDeferred::Initialize()
         sbInit.Stride = sizeof(ClusterBounds);
         sbInit.NumElements = AppSettings::MaxSpotLights;
         sbInit.Dynamic = true;
-        sbInit.Lifetime = BufferLifetime::Temporary;
+        sbInit.GPUWritable = false;
         spotLightBoundsBuffer.Initialize(sbInit);
 
         sbInit.Stride = sizeof(uint32);
@@ -194,9 +308,9 @@ void BindlessDeferred::Initialize()
         StructuredBufferInit sbInit;
         sbInit.Stride = sizeof(LightConstants);
         sbInit.NumElements = 1;
-        sbInit.Dynamic = false;
-        sbInit.Lifetime = BufferLifetime::Persistent;
-        sbInit.InitialState = D3D12_RESOURCE_STATE_COPY_DEST;
+        sbInit.Dynamic = true;
+        sbInit.GPUWritable = true;
+        sbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
 
         spotLightBuffer.Initialize(sbInit);
         spotLightBuffer.Resource()->SetName(L"Spot Light Buffer");
@@ -226,20 +340,20 @@ void BindlessDeferred::Initialize()
         opts.Add("Intersecting_", 0);
 
         // Clustering shaders
-        clusterVS = CompileFromFile(L"Clusters.hlsl", "ClusterVS", ShaderType::Vertex, ShaderProfile::SM51, opts);
-        clusterFrontFacePS = CompileFromFile(L"Clusters.hlsl", "ClusterPS", ShaderType::Pixel, ShaderProfile::SM51, opts);
+        clusterVS = CompileFromFile(L"Clusters.hlsl", "ClusterVS", ShaderType::Vertex, opts);
+        clusterFrontFacePS = CompileFromFile(L"Clusters.hlsl", "ClusterPS", ShaderType::Pixel, opts);
 
         opts.Reset();
         opts.Add("FrontFace_", 0);
         opts.Add("BackFace_", 1);
         opts.Add("Intersecting_", 0);
-        clusterBackFacePS = CompileFromFile(L"Clusters.hlsl", "ClusterPS", ShaderType::Pixel, ShaderProfile::SM51, opts);
+        clusterBackFacePS = CompileFromFile(L"Clusters.hlsl", "ClusterPS", ShaderType::Pixel, opts);
 
         opts.Reset();
         opts.Add("FrontFace_", 0);
         opts.Add("BackFace_", 0);
         opts.Add("Intersecting_", 1);
-        clusterIntersectingPS = CompileFromFile(L"Clusters.hlsl", "ClusterPS", ShaderType::Pixel, ShaderProfile::SM51, opts);
+        clusterIntersectingPS = CompileFromFile(L"Clusters.hlsl", "ClusterPS", ShaderType::Pixel, opts);
     }
 
     MakeBoxGeometry(decalClusterVtxBuffer, decalClusterIdxBuffer, 2.0f);    // resulting box is [-1, 1]
@@ -264,11 +378,11 @@ void BindlessDeferred::Initialize()
         // Compile picking shaders
         CompileOptions opts;
         opts.Add("MSAA_", 0);
-        pickingCS[0] = CompileFromFile(L"Picking.hlsl", "PickingCS", ShaderType::Compute, ShaderProfile::SM51, opts);
+        pickingCS[0] = CompileFromFile(L"Picking.hlsl", "PickingCS", ShaderType::Compute, opts);
 
         opts.Reset();
         opts.Add("MSAA_", 1);
-        pickingCS[1] = CompileFromFile(L"Picking.hlsl", "PickingCS", ShaderType::Compute, ShaderProfile::SM51, opts);
+        pickingCS[1] = CompileFromFile(L"Picking.hlsl", "PickingCS", ShaderType::Compute, opts);
     }
 
     // Compile MSAA mask generation shaders
@@ -277,12 +391,12 @@ void BindlessDeferred::Initialize()
         CompileOptions opts;
         opts.Add("MSAASamples_", AppSettings::NumMSAASamples(MSAAModes(msaaMode)));
         opts.Add("UseZGradients_", 0);
-        msaaMaskCS[msaaMode][0] = CompileFromFile(L"MSAAMask.hlsl", "MSAAMaskCS", ShaderType::Compute, ShaderProfile::SM51, opts);
+        msaaMaskCS[msaaMode][0] = CompileFromFile(L"MSAAMask.hlsl", "MSAAMaskCS", ShaderType::Compute, opts);
 
         opts.Reset();
         opts.Add("MSAASamples_", AppSettings::NumMSAASamples(MSAAModes(msaaMode)));
         opts.Add("UseZGradients_", 1);
-        msaaMaskCS[msaaMode][1] = CompileFromFile(L"MSAAMask.hlsl", "MSAAMaskCS", ShaderType::Compute, ShaderProfile::SM51, opts);
+        msaaMaskCS[msaaMode][1] = CompileFromFile(L"MSAAMask.hlsl", "MSAAMaskCS", ShaderType::Compute, opts);
     }
 
     // Compile resolve shaders
@@ -293,65 +407,52 @@ void BindlessDeferred::Initialize()
             CompileOptions opts;
             opts.Add("MSAASamples_", AppSettings::NumMSAASamples(MSAAModes(msaaMode)));
             opts.Add("Deferred_", uint32(deferred));
-            resolvePS[msaaMode][deferred] = CompileFromFile(L"Resolve.hlsl", "ResolvePS", ShaderType::Pixel, ShaderProfile::SM51, opts);
+            resolvePS[msaaMode][deferred] = CompileFromFile(L"Resolve.hlsl", "ResolvePS", ShaderType::Pixel, opts);
         }
     }
 
     // Compile cluster visualization shaders
-    clusterVisPS = CompileFromFile(L"ClusterVisualizer.hlsl", "ClusterVisualizerPS", ShaderType::Pixel, ShaderProfile::SM51);
+    clusterVisPS = CompileFromFile(L"ClusterVisualizer.hlsl", "ClusterVisualizerPS", ShaderType::Pixel);
 
     std::wstring fullScreenTriPath = SampleFrameworkDir() + L"Shaders\\FullScreenTriangle.hlsl";
-    fullScreenTriVS = CompileFromFile(fullScreenTriPath.c_str(), "FullScreenTriangleVS", ShaderType::Vertex, ShaderProfile::SM51);
-
-    // Create constant buffers
-    clusterConstants.Initialize(BufferLifetime::Temporary);
-    msaaMaskConstants.Initialize(BufferLifetime::Temporary);
-    deferredConstants.Initialize(BufferLifetime::Temporary);
-    shadingConstants.Initialize(BufferLifetime::Temporary);
-    pickingConstants.Initialize(BufferLifetime::Temporary);
-    clusterVisConstants.Initialize(BufferLifetime::Temporary);
+    fullScreenTriVS = CompileFromFile(fullScreenTriPath.c_str(), "FullScreenTriangleVS", ShaderType::Vertex);
 
     {
         // Clustering root signature
-        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
-        srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        srvRanges[0].NumDescriptors = 3;
-        srvRanges[0].BaseShaderRegister = 0;
-        srvRanges[0].RegisterSpace = 0;
-        srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
         D3D12_DESCRIPTOR_RANGE1 uavRanges[1] = {};
         uavRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         uavRanges[0].NumDescriptors = 1;
         uavRanges[0].BaseShaderRegister = 0;
         uavRanges[0].RegisterSpace = 0;
-        uavRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        uavRanges[0].OffsetInDescriptorsFromTableStart = 0;
 
-        D3D12_ROOT_PARAMETER1 rootParameters[4] = {};
+        D3D12_ROOT_PARAMETER1 rootParameters[NumClusterRootParams] = {};
+
+        // Standard SRV descriptors
+        rootParameters[ClusterParams_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[ClusterParams_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        rootParameters[ClusterParams_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[ClusterParams_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
+
+        // PS UAV descriptors
+        rootParameters[ClusterParams_UAVDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[ClusterParams_UAVDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[ClusterParams_UAVDescriptors].DescriptorTable.pDescriptorRanges = uavRanges;
+        rootParameters[ClusterParams_UAVDescriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(uavRanges);
 
         // CBuffer
-        rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[0].Descriptor.RegisterSpace = 0;
-        rootParameters[0].Descriptor.ShaderRegister = 0;
+        rootParameters[ClusterParams_CBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[ClusterParams_CBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[ClusterParams_CBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[ClusterParams_CBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[ClusterParams_CBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         // AppSettings
-        rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[1].Descriptor.RegisterSpace = 0;
-        rootParameters[1].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
-
-        // VS SRV descriptors
-        rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        rootParameters[2].DescriptorTable.pDescriptorRanges = srvRanges;
-        rootParameters[2].DescriptorTable.NumDescriptorRanges = ArraySize_(srvRanges);
-
-        // PS SRV descriptors
-        rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[3].DescriptorTable.pDescriptorRanges = uavRanges;
-        rootParameters[3].DescriptorTable.NumDescriptorRanges = ArraySize_(uavRanges);
+        rootParameters[ClusterParams_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[ClusterParams_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[ClusterParams_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[ClusterParams_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[ClusterParams_AppSettings].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
@@ -365,29 +466,30 @@ void BindlessDeferred::Initialize()
 
     {
         // Picking root signature
-        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
-        descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        descriptorRanges[0].NumDescriptors = 2;
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[1] = {};
+        descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        descriptorRanges[0].NumDescriptors = 1;
         descriptorRanges[0].BaseShaderRegister = 0;
         descriptorRanges[0].RegisterSpace = 0;
-        descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        descriptorRanges[0].OffsetInDescriptorsFromTableStart = 0;
 
-        descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        descriptorRanges[1].NumDescriptors = 1;
-        descriptorRanges[1].BaseShaderRegister = 0;
-        descriptorRanges[1].RegisterSpace = 0;
-        descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        D3D12_ROOT_PARAMETER1 rootParameters[NumPickingRootParams] = {};
 
-        D3D12_ROOT_PARAMETER1 rootParameters[2] = {};
-        rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[0].Descriptor.RegisterSpace = 0;
-        rootParameters[0].Descriptor.ShaderRegister = 0;
+        rootParameters[PickingParams_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[PickingParams_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[PickingParams_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[PickingParams_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
 
-        rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[1].DescriptorTable.pDescriptorRanges = descriptorRanges;
-        rootParameters[1].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
+        rootParameters[PickingParams_UAVDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[PickingParams_UAVDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[PickingParams_UAVDescriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
+        rootParameters[PickingParams_UAVDescriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
+
+        rootParameters[PickingParams_CBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[PickingParams_CBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[PickingParams_CBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[PickingParams_CBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[PickingParams_CBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
@@ -401,38 +503,35 @@ void BindlessDeferred::Initialize()
 
     {
         // MSAA mask root signature
-        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
-        descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        descriptorRanges[0].NumDescriptors = 2;
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[1] = {};
+        descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        descriptorRanges[0].NumDescriptors = 3;
         descriptorRanges[0].BaseShaderRegister = 0;
         descriptorRanges[0].RegisterSpace = 0;
-        descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        descriptorRanges[0].OffsetInDescriptorsFromTableStart = 0;
 
-        descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        descriptorRanges[1].NumDescriptors = 3;
-        descriptorRanges[1].BaseShaderRegister = 0;
-        descriptorRanges[1].RegisterSpace = 0;
-        descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        D3D12_ROOT_PARAMETER1 rootParameters[NumMSAAMaskRootParams] = {};
+        rootParameters[MSAAMaskParams_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[MSAAMaskParams_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[MSAAMaskParams_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[MSAAMaskParams_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
 
-        D3D12_ROOT_PARAMETER1 rootParameters[3] = {};
+        rootParameters[MSAAMaskParams_UAVDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[MSAAMaskParams_UAVDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[MSAAMaskParams_UAVDescriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
+        rootParameters[MSAAMaskParams_UAVDescriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
 
-        // MSAAMaskCBuffer
-        rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[0].Descriptor.RegisterSpace = 0;
-        rootParameters[0].Descriptor.ShaderRegister = 0;
+        rootParameters[MSAAMaskParams_CBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MSAAMaskParams_CBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[MSAAMaskParams_CBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[MSAAMaskParams_CBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[MSAAMaskParams_CBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
-        // AppSettings
-        rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[1].Descriptor.RegisterSpace = 0;
-        rootParameters[1].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
-
-        // SRV descriptors
-        rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[2].DescriptorTable.pDescriptorRanges = descriptorRanges;
-        rootParameters[2].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
+        rootParameters[MSAAMaskParams_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[MSAAMaskParams_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[MSAAMaskParams_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[MSAAMaskParams_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[MSAAMaskParams_AppSettings].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
@@ -446,33 +545,27 @@ void BindlessDeferred::Initialize()
 
     {
         // Resolve root signature
-        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
-        srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        srvRanges[0].NumDescriptors = 1;
-        srvRanges[0].BaseShaderRegister = 0;
-        srvRanges[0].RegisterSpace = 0;
-        srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        D3D12_ROOT_PARAMETER1 rootParameters[NumResolveRootParams] = {};
 
-        D3D12_ROOT_PARAMETER1 rootParameters[3] = {};
+        // Standard SRV descriptors
+        rootParameters[ResolveParams_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[ResolveParams_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[ResolveParams_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[ResolveParams_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
 
-        // ResolveCBuffer
-        rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[0].Constants.Num32BitValues = 2;
-        rootParameters[0].Constants.RegisterSpace = 0;
-        rootParameters[0].Constants.ShaderRegister = 0;
+        // CBuffer
+        rootParameters[ResolveParams_Constants].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        rootParameters[ResolveParams_Constants].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[ResolveParams_Constants].Constants.Num32BitValues = 3;
+        rootParameters[ResolveParams_Constants].Constants.RegisterSpace = 0;
+        rootParameters[ResolveParams_Constants].Constants.ShaderRegister = 0;
 
         // AppSettings
-        rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[1].Descriptor.RegisterSpace = 0;
-        rootParameters[1].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
-
-        // SRV descriptors
-        rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[2].DescriptorTable.pDescriptorRanges = srvRanges;
-        rootParameters[2].DescriptorTable.NumDescriptorRanges = ArraySize_(srvRanges);
+        rootParameters[ResolveParams_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[ResolveParams_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[ResolveParams_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[ResolveParams_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[ResolveParams_AppSettings].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
@@ -486,32 +579,27 @@ void BindlessDeferred::Initialize()
 
     {
         // Cluster visualization root signature
-        D3D12_DESCRIPTOR_RANGE1 srvRanges[1] = {};
-        srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        srvRanges[0].NumDescriptors = 2;
-        srvRanges[0].BaseShaderRegister = 0;
-        srvRanges[0].RegisterSpace = 0;
-        srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        D3D12_ROOT_PARAMETER1 rootParameters[NumClusterVisRootParams] = {};
 
-        D3D12_ROOT_PARAMETER1 rootParameters[3] = {};
+        // Standard SRV descriptors
+        rootParameters[ClusterVisParams_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[ClusterVisParams_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[ClusterVisParams_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[ClusterVisParams_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
 
         // CBuffer
-        rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[0].Descriptor.RegisterSpace = 0;
-        rootParameters[0].Descriptor.ShaderRegister = 0;
+        rootParameters[ClusterVisParams_CBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[ClusterVisParams_CBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[ClusterVisParams_CBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[ClusterVisParams_CBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[ClusterVisParams_CBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         // AppSettings
-        rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[1].Descriptor.RegisterSpace = 0;
-        rootParameters[1].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
-
-        // SRV descriptors
-        rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        rootParameters[2].DescriptorTable.pDescriptorRanges = srvRanges;
-        rootParameters[2].DescriptorTable.NumDescriptorRanges = ArraySize_(srvRanges);
+        rootParameters[ClusterVisParams_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[ClusterVisParams_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        rootParameters[ClusterVisParams_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[ClusterVisParams_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[ClusterVisParams_AppSettings].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
         rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
@@ -570,9 +658,6 @@ void BindlessDeferred::Shutdown()
     DX12::Release(deferredRootSignature);
     DX12::Release(deferredCmdSignature);
 
-    deferredConstants.Shutdown();
-    msaaMaskConstants.Shutdown();
-    shadingConstants.Shutdown();
     DX12::Release(msaaMaskRootSignature);
     nonMsaaTileBuffer.Shutdown();
     msaaTileBuffer.Shutdown();
@@ -582,11 +667,9 @@ void BindlessDeferred::Shutdown()
 
     pickingBuffer.Shutdown();
     DX12::Release(pickingRS);
-    pickingConstants.Shutdown();
     for(uint64 i = 0; i < ArraySize_(pickingReadbackBuffers); ++i)
         pickingReadbackBuffers[i].Shutdown();
 
-    clusterVisConstants.Shutdown();
     DX12::Release(clusterVisRootSignature);
 
     mainTarget.Shutdown();
@@ -649,6 +732,10 @@ void BindlessDeferred::CreatePSOs()
         psoDesc.RasterizerState = DX12::GetRasterizerState(RasterizerState::FrontFaceCull);
         psoDesc.RasterizerState.ConservativeRaster = crMode;
         DXCall(DX12::Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&clusterIntersectingPSO)));
+
+        clusterFrontFacePSO->SetName(L"Cluster Front-Face PSO");
+        clusterBackFacePSO->SetName(L"Cluster Back-Face PSO");
+        clusterIntersectingPSO->SetName(L"Cluster Intersecting PSO");
     }
 
     const bool msaaEnabled = AppSettings::MSAAMode != MSAAModes::MSAANone;
@@ -666,7 +753,7 @@ void BindlessDeferred::CreatePSOs()
         DXCall(DX12::Device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&msaaMaskPSOs[1])));
     }
 
-    if(taskSet == nullptr)
+    if(taskSet == nullptr || EnableMultithreadedCompilation == false)
     {
         // Deferred rendering PSO
         const uint64 uvGradIdx = AppSettings::ComputeUVGradients ? 1 : 0;
@@ -865,7 +952,7 @@ void BindlessDeferred::CompileShadersTask(uint32 start, uint32 end, uint32 threa
         opts.Add("ShadePerSample_", perSample);
         opts.Add("NumMaterialTextures_", uint32(numMaterialTextures));
         opts.Add("ComputeUVGradients_", computeUVGradients);
-        app->deferredCS[msaaMode][computeUVGradients][perSample] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, ShaderProfile::SM51, opts);
+        app->deferredCS[msaaMode][computeUVGradients][perSample] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, opts);
     }
 }
 
@@ -882,18 +969,25 @@ void BindlessDeferred::InitializeScene()
     camera.SetXRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].x);
     camera.SetYRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].y);
 
-    if(taskSet != nullptr)
+    if(EnableMultithreadedCompilation)
     {
-        enkiWaitForTaskSet(taskScheduler, taskSet);
+        if(taskSet != nullptr)
+        {
+            enkiWaitForTaskSet(taskScheduler, taskSet);
+        }
+        else
+        {
+            taskScheduler = enkiCreateTaskScheduler();
+            taskSet = enkiCreateTaskSet(taskScheduler, CompileShadersTask);
+        }
+
+        // Kick off tasks to compile the deferred compute shaders
+        enkiAddTaskSetToPipe(taskScheduler, taskSet, this, uint32(MSAAModes::NumValues) * 2 * 2);
     }
     else
     {
-        taskScheduler = enkiCreateTaskScheduler();
-        taskSet = enkiCreateTaskSet(taskScheduler, CompileShadersTask);
+        CompileShadersTask(0, uint32(MSAAModes::NumValues) * 2 * 2, 0, this);
     }
-
-    // Kick off tasks to compile the deferred compute shaders
-    enkiAddTaskSetToPipe(taskScheduler, taskSet, this, uint32(MSAAModes::NumValues) * 2 * 2);
 
     {
         // Initialize the spotlight data used for rendering
@@ -920,69 +1014,66 @@ void BindlessDeferred::InitializeScene()
         DX12::DeferredRelease(deferredRootSignature);
 
         // Deferred root signature
-        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[2] = {};
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[1] = {};
         descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         descriptorRanges[0].NumDescriptors = 1;
         descriptorRanges[0].BaseShaderRegister = 0;
         descriptorRanges[0].RegisterSpace = 0;
-        descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-        descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        descriptorRanges[1].NumDescriptors = 15 + uint32(numMaterialTextures);
-        descriptorRanges[1].BaseShaderRegister = 0;
-        descriptorRanges[1].RegisterSpace = 0;
-        descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-        D3D12_DESCRIPTOR_RANGE1 decalTextureRanges[1] = {};
-        decalTextureRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        decalTextureRanges[0].NumDescriptors = AppSettings::NumDecalTextures;
-        decalTextureRanges[0].BaseShaderRegister = 0;
-        decalTextureRanges[0].RegisterSpace = 1;
-        decalTextureRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        descriptorRanges[0].OffsetInDescriptorsFromTableStart = 0;
 
         D3D12_ROOT_PARAMETER1 rootParameters[NumDeferredRootParams] = {};
 
-        // DeferredCBuffer
-        rootParameters[Deferred_DeferredCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_DeferredCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_DeferredCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_DeferredCBuffer].Descriptor.ShaderRegister = 2;
+        rootParameters[DeferredParams_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[DeferredParams_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[DeferredParams_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
 
         // PSCBuffer
-        rootParameters[Deferred_PSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_PSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_PSCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_PSCBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[DeferredParams_PSCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[DeferredParams_PSCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_PSCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[DeferredParams_PSCBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[DeferredParams_PSCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         // ShadowCBuffer
-        rootParameters[Deferred_ShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_ShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_ShadowCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_ShadowCBuffer].Descriptor.ShaderRegister = 1;
+        rootParameters[DeferredParams_ShadowCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[DeferredParams_ShadowCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_ShadowCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[DeferredParams_ShadowCBuffer].Descriptor.ShaderRegister = 1;
+        rootParameters[DeferredParams_ShadowCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
+
+        // DeferredCBuffer
+        rootParameters[DeferredParams_DeferredCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[DeferredParams_DeferredCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_DeferredCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[DeferredParams_DeferredCBuffer].Descriptor.ShaderRegister = 2;
+        rootParameters[DeferredParams_DeferredCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
         // LightCBuffer
-        rootParameters[Deferred_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_LightCBuffer].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_LightCBuffer].Descriptor.ShaderRegister = 3;
+        rootParameters[DeferredParams_LightCBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[DeferredParams_LightCBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_LightCBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[DeferredParams_LightCBuffer].Descriptor.ShaderRegister = 3;
+        rootParameters[DeferredParams_LightCBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
+
+        // SRV Indices
+        rootParameters[DeferredParams_SRVIndices].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[DeferredParams_SRVIndices].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_SRVIndices].Descriptor.RegisterSpace = 0;
+        rootParameters[DeferredParams_SRVIndices].Descriptor.ShaderRegister = 4;
+        rootParameters[DeferredParams_SRVIndices].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
+
+        // UAV's
+        rootParameters[DeferredParams_UAVDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[DeferredParams_UAVDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_UAVDescriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
+        rootParameters[DeferredParams_UAVDescriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
 
         // AppSettings
-        rootParameters[Deferred_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParameters[Deferred_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_AppSettings].Descriptor.RegisterSpace = 0;
-        rootParameters[Deferred_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
-
-        // Descriptors
-        rootParameters[Deferred_Descriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[Deferred_Descriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_Descriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
-        rootParameters[Deferred_Descriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
-
-        // Decal texture descriptors
-        rootParameters[Deferred_DecalDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        rootParameters[Deferred_DecalDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        rootParameters[Deferred_DecalDescriptors].DescriptorTable.pDescriptorRanges = decalTextureRanges;
-        rootParameters[Deferred_DecalDescriptors].DescriptorTable.NumDescriptorRanges = 1;
+        rootParameters[DeferredParams_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[DeferredParams_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[DeferredParams_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[DeferredParams_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
 
         D3D12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
         staticSamplers[0] = DX12::GetStaticSamplerState(SamplerState::Anisotropic, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
@@ -1079,7 +1170,7 @@ void BindlessDeferred::Update(const Timer& timer)
         CreatePSOs();
     }
 
-    if(taskSet != nullptr && enkiIsTaskSetComplete(taskScheduler, taskSet))
+    if(EnableMultithreadedCompilation && taskSet != nullptr && enkiIsTaskSetComplete(taskScheduler, taskSet))
     {
         enkiDeleteTaskSet(taskSet);
         enkiDeleteTaskScheduler(taskScheduler);
@@ -1101,7 +1192,7 @@ void BindlessDeferred::Render(const Timer& timer)
     if(taskSet != nullptr)
     {
         // We're still waiting for shaders to compile, so print a message to the screen and skip the render loop
-        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { swapChain.BackBuffer().RTV.CPUHandle };
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { swapChain.BackBuffer().RTV };
         cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
 
         const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -1136,10 +1227,9 @@ void BindlessDeferred::Render(const Timer& timer)
         meshRenderer.RenderSpotLightShadowMap(cmdList, camera);
 
     // Update the light constant buffer
-    spotLightBuffer.InternalBuffer.UpdateData(spotLights.Data(), spotLights.MemorySize(), 0);
+    spotLightBuffer.InternalBuffer.UpdateData(spotLights.Data(), spotLights.MemorySize(), 0, false);
     spotLightBuffer.InternalBuffer.UpdateData(meshRenderer.SpotLightShadowMatrices(), spotLights.Size() * sizeof(Float4x4),
-                                              sizeof(SpotLight) * AppSettings::MaxSpotLights);
-    spotLightBuffer.Transition(DX12::CmdList, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+                                              sizeof(SpotLight) * AppSettings::MaxSpotLights, true);
 
     if(AppSettings::RenderMode == RenderModes::ClusteredForward)
         RenderForward();
@@ -1156,7 +1246,7 @@ void BindlessDeferred::Render(const Timer& timer)
         postProcessor.Render(cmdList, finalRT, swapChain.BackBuffer());
     }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { swapChain.BackBuffer().RTV.CPUHandle };
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { swapChain.BackBuffer().RTV };
     cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
 
     RenderClusterVisualizer();
@@ -1164,10 +1254,6 @@ void BindlessDeferred::Render(const Timer& timer)
     DX12::SetViewport(cmdList, swapChain.Width(), swapChain.Height());
 
     RenderHUD(timer);
-
-    // Transition updatable resources back to copy dest state
-    decalBuffer.Transition(DX12::CmdList, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
-    spotLightBuffer.Transition(DX12::CmdList, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_RESOURCE_STATE_COPY_DEST);
 }
 
 void BindlessDeferred::UpdateDecals(const Timer& timer)
@@ -1177,17 +1263,19 @@ void BindlessDeferred::UpdateDecals(const Timer& timer)
 
     // Update picking and placing new decals
     cursorDecal = Decal();
-    cursorDecal.Type = uint32(-1);
+    cursorDecal.AlbedoTexIdx = uint32(-1);
+    cursorDecal.NormalTexIdx = uint32(-1);
     cursorDecalIntensity = 0.0f;
     if(currMouseState.IsOverWindow && AppSettings::EnableDecalPicker)
     {
         // Update the decal cursor
-        const uint64 texIdx = currDecalType * AppSettings::NumTexturesPerDecal;
-        Assert_(texIdx < ArraySize_(decalTextures));
+        const uint64 albedoTexIdx = currDecalType * AppSettings::NumTexturesPerDecal;
+        const uint64 normalTexIdx = albedoTexIdx + 1;
+        Assert_(albedoTexIdx < ArraySize_(decalTextures));
 
         Float2 textureSize;
-        textureSize.x = float(decalTextures[texIdx].Width);
-        textureSize.y = float(decalTextures[texIdx].Height);
+        textureSize.x = float(decalTextures[albedoTexIdx].Width);
+        textureSize.y = float(decalTextures[albedoTexIdx].Height);
         const float sizeScale = 1 / 1024.0f;
 
         const PickingData* pickingData = pickingReadbackBuffers[DX12::CurrFrameIdx].Map<PickingData>();
@@ -1197,7 +1285,8 @@ void BindlessDeferred::UpdateDecals(const Timer& timer)
 
             cursorDecal.Position = pickingData->Position;
             cursorDecal.Size = Float3(textureSize.x * sizeScale, textureSize.y * sizeScale, decalThickness);
-            cursorDecal.Type = uint32(currDecalType);
+            cursorDecal.AlbedoTexIdx = decalTextures[albedoTexIdx].SRV;
+            cursorDecal.NormalTexIdx = decalTextures[normalTexIdx].SRV;
             cursorDecalIntensity = float(std::cos(timer.ElapsedSecondsD() * Pi2)) * 0.25f + 0.5f;
 
             Float3 forward = -pickingData->Normal;
@@ -1279,8 +1368,7 @@ void BindlessDeferred::UpdateDecals(const Timer& timer)
         intersectsCamera[decalIdx] = box.Intersects(nearClipBox);
     }
 
-    decalBuffer.UpdateData(decals.Data(), decals.Size(), 0);
-    decalBuffer.Transition(DX12::CmdList, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+    decalBuffer.UpdateData(decals.Data(), decals.Size(), 0, false);
 
     numIntersectingDecals = 0;
     uint32* instanceData = decalInstanceBuffer.Map<uint32>();
@@ -1382,39 +1470,38 @@ void BindlessDeferred::RenderClusters()
     decalClusterBuffer.MakeWritable(cmdList);
     spotLightClusterBuffer.MakeWritable(cmdList);
 
-    if(AppSettings::RenderDecals)
     {
         // Clear decal clusters
-        D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { decalClusterBuffer.UAV() };
-        DescriptorHandle gpuHandle = DX12::MakeDescriptorTable(ArraySize_(cpuDescriptors), cpuDescriptors);
+        D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { decalClusterBuffer.UAV };
+        D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = DX12::TempDescriptorTable(cpuDescriptors, ArraySize_(cpuDescriptors));
 
         uint32 values[4] = { };
-        cmdList->ClearUnorderedAccessViewUint(gpuHandle.GPUHandle, cpuDescriptors[0], decalClusterBuffer.InternalBuffer.Resource, values, 0, nullptr);
+        cmdList->ClearUnorderedAccessViewUint(gpuHandle, cpuDescriptors[0], decalClusterBuffer.InternalBuffer.Resource, values, 0, nullptr);
     }
 
-    if(AppSettings::RenderLights)
     {
         // Clear spot light clusters
-        D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { spotLightClusterBuffer.UAV() };
-        DescriptorHandle gpuHandle = DX12::MakeDescriptorTable(ArraySize_(cpuDescriptors), cpuDescriptors);
+        D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { spotLightClusterBuffer.UAV };
+        D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = DX12::TempDescriptorTable(cpuDescriptors, ArraySize_(cpuDescriptors));
 
         uint32 values[4] = { };
-        cmdList->ClearUnorderedAccessViewUint(gpuHandle.GPUHandle, cpuDescriptors[0], spotLightClusterBuffer.InternalBuffer.Resource, values, 0, nullptr);
+        cmdList->ClearUnorderedAccessViewUint(gpuHandle, cpuDescriptors[0], spotLightClusterBuffer.InternalBuffer.Resource, values, 0, nullptr);
     }
 
-    clusterConstants.Data.ViewProjection = camera.ViewProjectionMatrix();
-    clusterConstants.Data.InvProjection = Float4x4::Invert(camera.ProjectionMatrix());
-    clusterConstants.Data.NearClip = camera.NearClip();
-    clusterConstants.Data.FarClip = camera.FarClip();
-    clusterConstants.Data.InvClipRange = 1.0f / (camera.FarClip() - camera.NearClip());
-    clusterConstants.Data.NumXTiles = uint32(AppSettings::NumXTiles);
-    clusterConstants.Data.NumYTiles = uint32(AppSettings::NumYTiles);
-    clusterConstants.Data.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
-    clusterConstants.Data.InstanceOffset = 0;
-    clusterConstants.Data.NumLights = Min<uint32>(uint32(spotLights.Size()), AppSettings::MaxLightClamp);
-    clusterConstants.Data.NumDecals = uint32(Min(numDecals, AppSettings::MaxDecals));
+    ClusterConstants clusterConstants;
+    clusterConstants.ViewProjection = camera.ViewProjectionMatrix();
+    clusterConstants.InvProjection = Float4x4::Invert(camera.ProjectionMatrix());
+    clusterConstants.NearClip = camera.NearClip();
+    clusterConstants.FarClip = camera.FarClip();
+    clusterConstants.InvClipRange = 1.0f / (camera.FarClip() - camera.NearClip());
+    clusterConstants.NumXTiles = uint32(AppSettings::NumXTiles);
+    clusterConstants.NumYTiles = uint32(AppSettings::NumYTiles);
+    clusterConstants.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
+    clusterConstants.InstanceOffset = 0;
+    clusterConstants.NumLights = Min<uint32>(uint32(spotLights.Size()), AppSettings::MaxLightClamp);
+    clusterConstants.NumDecals = uint32(Min(numDecals, AppSettings::MaxDecals));
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { clusterMSAATarget.RTV.CPUHandle };
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { clusterMSAATarget.RTV };
     ClusterRasterizationModes rastMode = AppSettings::ClusterRasterizationMode;
     if(rastMode == ClusterRasterizationModes::MSAA4x || rastMode == ClusterRasterizationModes::MSAA8x)
         cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
@@ -1426,6 +1513,8 @@ void BindlessDeferred::RenderClusters()
 
     cmdList->SetGraphicsRootSignature(clusterRS);
 
+    DX12::BindStandardDescriptorTable(cmdList, ClusterParams_StandardDescriptors, CmdListMode::Graphics);
+
     if(AppSettings::RenderDecals)
     {
         // Update decal clusters
@@ -1434,18 +1523,17 @@ void BindlessDeferred::RenderClusters()
         D3D12_INDEX_BUFFER_VIEW ibView = decalClusterIdxBuffer.IBView();
         cmdList->IASetIndexBuffer(&ibView);
 
-        clusterConstants.Data.ElementsPerCluster = uint32(AppSettings::DecalElementsPerCluster);
-        clusterConstants.Data.InstanceOffset = 0;
-        clusterConstants.Upload();
-        clusterConstants.SetAsGfxRootParameter(cmdList, 0);
+        clusterConstants.ElementsPerCluster = uint32(AppSettings::DecalElementsPerCluster);
+        clusterConstants.InstanceOffset = 0;
+        clusterConstants.BoundsBufferIdx = decalBoundsBuffer.SRV;
+        clusterConstants.VertexBufferIdx = decalClusterVtxBuffer.SRV;
+        clusterConstants.InstanceBufferIdx = decalInstanceBuffer.SRV;
+        DX12::BindTempConstantBuffer(cmdList, clusterConstants, ClusterParams_CBuffer, CmdListMode::Graphics);
 
-        AppSettings::BindCBufferGfx(cmdList, 1);
+        AppSettings::BindCBufferGfx(cmdList, ClusterParams_AppSettings);
 
-        D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptors[] = { decalBoundsBuffer.SRV(), decalClusterVtxBuffer.SRV(), decalInstanceBuffer.SRV() };
-        DX12::BindShaderResources(cmdList, 2, ArraySize_(srvDescriptors), srvDescriptors);
-
-        D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptors[] = { decalClusterBuffer.UAV() };
-        DX12::BindShaderResources(cmdList, 3, ArraySize_(uavDescriptors), uavDescriptors);
+        D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { decalClusterBuffer.UAV };
+        DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), ClusterParams_UAVDescriptors, CmdListMode::Graphics);
 
         const uint64 numDecalsToRender = Min(numDecals, AppSettings::MaxDecals);
         Assert_(numIntersectingDecals <= numDecalsToRender);
@@ -1459,9 +1547,8 @@ void BindlessDeferred::RenderClusters()
         // Now for all other decals, render the back faces followed by the front faces
         cmdList->SetPipelineState(clusterBackFacePSO);
 
-        clusterConstants.Data.InstanceOffset = uint32(numIntersectingDecals);
-        clusterConstants.Upload();
-        clusterConstants.SetAsGfxRootParameter(cmdList, 0);
+        clusterConstants.InstanceOffset = uint32(numIntersectingDecals);
+        DX12::BindTempConstantBuffer(cmdList, clusterConstants, ClusterParams_CBuffer, CmdListMode::Graphics);
 
         cmdList->DrawIndexedInstanced(uint32(decalClusterIdxBuffer.NumElements), uint32(numNonIntersecting), 0, 0, 0);
 
@@ -1480,19 +1567,17 @@ void BindlessDeferred::RenderClusters()
         D3D12_INDEX_BUFFER_VIEW ibView = spotLightClusterIdxBuffer.IBView();
         cmdList->IASetIndexBuffer(&ibView);
 
-        clusterConstants.Data.ElementsPerCluster = uint32(AppSettings::SpotLightElementsPerCluster);
-        clusterConstants.Data.InstanceOffset = 0;
-        clusterConstants.Upload();
+        clusterConstants.ElementsPerCluster = uint32(AppSettings::SpotLightElementsPerCluster);
+        clusterConstants.InstanceOffset = 0;
+        clusterConstants.BoundsBufferIdx = spotLightBoundsBuffer.SRV;
+        clusterConstants.VertexBufferIdx = spotLightClusterVtxBuffer.SRV;
+        clusterConstants.InstanceBufferIdx = spotLightInstanceBuffer.SRV;
+        DX12::BindTempConstantBuffer(cmdList, clusterConstants, ClusterParams_CBuffer, CmdListMode::Graphics);
 
-        clusterConstants.SetAsGfxRootParameter(cmdList, 0);
+        AppSettings::BindCBufferGfx(cmdList, ClusterParams_AppSettings);
 
-        AppSettings::BindCBufferGfx(cmdList, 1);
-
-        D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptors[] = { spotLightBoundsBuffer.SRV(), spotLightClusterVtxBuffer.SRV(), spotLightInstanceBuffer.SRV() };
-        DX12::BindShaderResources(cmdList, 2, ArraySize_(srvDescriptors), srvDescriptors);
-
-        D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptors[] = { spotLightClusterBuffer.UAV() };
-        DX12::BindShaderResources(cmdList, 3, ArraySize_(uavDescriptors), uavDescriptors);
+        D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { spotLightClusterBuffer.UAV };
+        DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), ClusterParams_UAVDescriptors, CmdListMode::Graphics);
 
         const uint64 numLightsToRender = Min<uint64>(spotLights.Size(), AppSettings::MaxLightClamp);
         Assert_(numIntersectingSpotLights <= numLightsToRender);
@@ -1506,9 +1591,8 @@ void BindlessDeferred::RenderClusters()
         // Now for all other lights, render the back faces followed by the front faces
         cmdList->SetPipelineState(clusterBackFacePSO);
 
-        clusterConstants.Data.InstanceOffset = uint32(numIntersectingSpotLights);
-        clusterConstants.Upload();
-        clusterConstants.SetAsGfxRootParameter(cmdList, 0);
+        clusterConstants.InstanceOffset = uint32(numIntersectingSpotLights);
+        DX12::BindTempConstantBuffer(cmdList, clusterConstants, ClusterParams_CBuffer, CmdListMode::Graphics);
 
         cmdList->DrawIndexedInstanced(uint32(spotLightClusterIdxBuffer.NumElements), uint32(numNonIntersecting), 0, 0, 0);
 
@@ -1571,13 +1655,13 @@ void BindlessDeferred::RenderForward()
         cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
     }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2] = { mainTarget.RTV.CPUHandle, tangentFrameTarget.RTV.CPUHandle };
-    cmdList->OMSetRenderTargets(2, rtvHandles, false, &depthBuffer.DSV.CPUHandle);
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2] = { mainTarget.RTV, tangentFrameTarget.RTV };
+    cmdList->OMSetRenderTargets(2, rtvHandles, false, &depthBuffer.DSV);
 
     const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
     cmdList->ClearRenderTargetView(rtvHandles[0], clearColor, 0, nullptr);
     cmdList->ClearRenderTargetView(rtvHandles[1], clearColor, 0, nullptr);
-    cmdList->ClearDepthStencilView(depthBuffer.DSV.CPUHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+    cmdList->ClearDepthStencilView(depthBuffer.DSV, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
     DX12::SetViewport(cmdList, mainTarget.Width(), mainTarget.Height());
 
@@ -1599,7 +1683,7 @@ void BindlessDeferred::RenderForward()
         mainPassData.SpotLightClusterBuffer = &spotLightClusterBuffer;
         meshRenderer.RenderMainPass(cmdList, camera, mainPassData);
 
-        cmdList->OMSetRenderTargets(1, rtvHandles, false, &depthBuffer.DSV.CPUHandle);
+        cmdList->OMSetRenderTargets(1, rtvHandles, false, &depthBuffer.DSV);
 
         // Render the sky
         skybox.RenderSky(cmdList, camera.ViewMatrix(), camera.ProjectionMatrix(), skyCache, true);
@@ -1712,15 +1796,15 @@ void BindlessDeferred::RenderDeferred()
 
     {
         // Set the G-Buffer render targets and clear them
-        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[] = { tangentFrameTarget.RTV.CPUHandle, uvTarget.RTV.CPUHandle,
-                                                     materialIDTarget.RTV.CPUHandle, uvGradientsTarget.RTV.CPUHandle };
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[] = { tangentFrameTarget.RTV, uvTarget.RTV,
+                                                     materialIDTarget.RTV, uvGradientsTarget.RTV };
         const uint32 numTargets = AppSettings::ComputeUVGradients ? ArraySize_(rtvHandles) - 1 : ArraySize_(rtvHandles);
-        cmdList->OMSetRenderTargets(numTargets, rtvHandles, false, &depthBuffer.DSV.CPUHandle);
+        cmdList->OMSetRenderTargets(numTargets, rtvHandles, false, &depthBuffer.DSV);
 
         const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
         for(uint64 i = 0; i < numTargets; ++i)
             cmdList->ClearRenderTargetView(rtvHandles[i], clearColor, 0, nullptr);
-        cmdList->ClearDepthStencilView(depthBuffer.DSV.CPUHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+        cmdList->ClearDepthStencilView(depthBuffer.DSV, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
     }
 
     DX12::SetViewport(cmdList, mainTarget.Width(), mainTarget.Height());
@@ -1788,19 +1872,19 @@ void BindlessDeferred::RenderDeferred()
 
         // Clear the structure counts
         {
-            D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { nonMsaaTileBuffer.CounterUAV.CPUHandle };
-            DescriptorHandle gpuHandle = DX12::MakeDescriptorTable(ArraySize_(cpuDescriptors), cpuDescriptors);
+            D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { nonMsaaTileBuffer.CounterUAV };
+            D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = DX12::TempDescriptorTable(cpuDescriptors, ArraySize_(cpuDescriptors));
 
             uint32 values[4] = {};
-            cmdList->ClearUnorderedAccessViewUint(gpuHandle.GPUHandle, cpuDescriptors[0], nonMsaaTileBuffer.CounterResource, values, 0, nullptr);
+            cmdList->ClearUnorderedAccessViewUint(gpuHandle, cpuDescriptors[0], nonMsaaTileBuffer.CounterResource, values, 0, nullptr);
         }
 
         {
-            D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { msaaTileBuffer.CounterUAV.CPUHandle };
-            DescriptorHandle gpuHandle = DX12::MakeDescriptorTable(ArraySize_(cpuDescriptors), cpuDescriptors);
+            D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptors[1] = { msaaTileBuffer.CounterUAV };
+            D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = DX12::TempDescriptorTable(cpuDescriptors, ArraySize_(cpuDescriptors));
 
             uint32 values[4] = {};
-            cmdList->ClearUnorderedAccessViewUint(gpuHandle.GPUHandle, cpuDescriptors[0], msaaTileBuffer.CounterResource, values, 0, nullptr);
+            cmdList->ClearUnorderedAccessViewUint(gpuHandle, cpuDescriptors[0], msaaTileBuffer.CounterResource, values, 0, nullptr);
         }
 
         {
@@ -1833,22 +1917,18 @@ void BindlessDeferred::RenderDeferred()
         cmdList->SetComputeRootSignature(msaaMaskRootSignature);
         cmdList->SetPipelineState(AppSettings::UseZGradientsForMSAAMask ? msaaMaskPSOs[1] : msaaMaskPSOs[0]);
 
-        msaaMaskConstants.Data.NumXTiles = numComputeTilesX;
-        msaaMaskConstants.Upload();
-        msaaMaskConstants.SetAsComputeRootParameter(cmdList, 0);
+        DX12::BindStandardDescriptorTable(cmdList, MSAAMaskParams_StandardDescriptors, CmdListMode::Compute);
 
-        AppSettings::BindCBufferCompute(cmdList, 1);
+        MSAAMaskConstants msaaMaskConstants;
+        msaaMaskConstants.NumXTiles = numComputeTilesX;
+        msaaMaskConstants.MaterialIDMapIdx = materialIDTarget.SRV();
+        msaaMaskConstants.UVMapIdx = uvTarget.SRV();
+        DX12::BindTempConstantBuffer(cmdList, msaaMaskConstants, MSAAMaskParams_CBuffer, CmdListMode::Compute);
 
-        D3D12_CPU_DESCRIPTOR_HANDLE descriptors[] =
-        {
-            materialIDTarget.SRV(),
-            uvTarget.SRV(),
-            nonMsaaTileBuffer.UAV(),
-            msaaTileBuffer.UAV(),
-            msaaMaskBuffer.UAV(),
-        };
+        D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { nonMsaaTileBuffer.UAV, msaaTileBuffer.UAV, msaaMaskBuffer.UAV };
+        DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), MSAAMaskParams_UAVDescriptors, CmdListMode::Compute);
 
-        DX12::BindShaderResources(cmdList, 2, ArraySize_(descriptors), descriptors, CmdListMode::Compute);
+        AppSettings::BindCBufferGfx(cmdList, MSAAMaskParams_AppSettings);
 
         cmdList->Dispatch(numComputeTilesX, numComputeTilesY, 1);
 
@@ -1927,8 +2007,8 @@ void BindlessDeferred::RenderDeferred()
         // Render the sky in the empty areas
         mainTarget.Transition(cmdList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { mainTarget.RTV.CPUHandle };
-        cmdList->OMSetRenderTargets(1, rtvHandles, false, &depthBuffer.DSV.CPUHandle);
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { mainTarget.RTV };
+        cmdList->OMSetRenderTargets(1, rtvHandles, false, &depthBuffer.DSV);
 
         skybox.RenderSky(cmdList, camera.ViewMatrix(), camera.ProjectionMatrix(), skyCache, true);
 
@@ -1946,93 +2026,70 @@ void BindlessDeferred::RenderDeferred()
         cmdList->SetComputeRootSignature(deferredRootSignature);
         cmdList->SetPipelineState(deferredPSOs[0]);
 
+        DX12::BindStandardDescriptorTable(cmdList, DeferredParams_StandardDescriptors, CmdListMode::Compute);
+
         // Set constant buffers
-        deferredConstants.Data.InvViewProj = Float4x4::Invert(camera.ViewProjectionMatrix());
-        deferredConstants.Data.Projection = camera.ProjectionMatrix();
-        deferredConstants.Data.RTSize = Float2(float(mainTarget.Width()), float(mainTarget.Height()));
-        deferredConstants.Data.NumComputeTilesX = numComputeTilesX;
-        deferredConstants.Upload();
-        deferredConstants.SetAsComputeRootParameter(cmdList, Deferred_DeferredCBuffer);
+        DeferredConstants deferredConstants;
+        deferredConstants.InvViewProj = Float4x4::Invert(camera.ViewProjectionMatrix());
+        deferredConstants.Projection = camera.ProjectionMatrix();
+        deferredConstants.RTSize = Float2(float(mainTarget.Width()), float(mainTarget.Height()));
+        deferredConstants.NumComputeTilesX = numComputeTilesX;
+        DX12::BindTempConstantBuffer(cmdList, deferredConstants, DeferredParams_DeferredCBuffer, CmdListMode::Compute);
 
-        shadingConstants.Data.SunDirectionWS = AppSettings::SunDirection;
-        shadingConstants.Data.SunIrradiance = skyCache.SunIrradiance;
-        shadingConstants.Data.CosSunAngularRadius = std::cos(DegToRad(AppSettings::SunSize));
-        shadingConstants.Data.SinSunAngularRadius = std::sin(DegToRad(AppSettings::SunSize));
-        shadingConstants.Data.CameraPosWS = camera.Position();
+        ShadingConstants shadingConstants;
+        shadingConstants.SunDirectionWS = AppSettings::SunDirection;
+        shadingConstants.SunIrradiance = skyCache.SunIrradiance;
+        shadingConstants.CosSunAngularRadius = std::cos(DegToRad(AppSettings::SunSize));
+        shadingConstants.SinSunAngularRadius = std::sin(DegToRad(AppSettings::SunSize));
+        shadingConstants.CameraPosWS = camera.Position();
 
-        shadingConstants.Data.CursorDecalPos = cursorDecal.Position;
-        shadingConstants.Data.CursorDecalIntensity = cursorDecalIntensity;
-        shadingConstants.Data.CursorDecalOrientation = cursorDecal.Orientation;
-        shadingConstants.Data.CursorDecalSize = cursorDecal.Size;
-        shadingConstants.Data.CursorDecalType = cursorDecal.Type;
-        shadingConstants.Data.NumXTiles = uint32(AppSettings::NumXTiles);
-        shadingConstants.Data.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
-        shadingConstants.Data.NearClip = camera.NearClip();
-        shadingConstants.Data.FarClip = camera.FarClip();
+        shadingConstants.CursorDecalPos = cursorDecal.Position;
+        shadingConstants.CursorDecalIntensity = cursorDecalIntensity;
+        shadingConstants.CursorDecalOrientation = cursorDecal.Orientation;
+        shadingConstants.CursorDecalSize = cursorDecal.Size;
+        shadingConstants.CursorDecalTexIdx = cursorDecal.AlbedoTexIdx;
+        shadingConstants.NumXTiles = uint32(AppSettings::NumXTiles);
+        shadingConstants.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
+        shadingConstants.NearClip = camera.NearClip();
+        shadingConstants.FarClip = camera.FarClip();
+        shadingConstants.SkySH = skyCache.SH;
 
-        shadingConstants.Data.SkySH = skyCache.SH;
-        shadingConstants.Upload();
-        shadingConstants.SetAsComputeRootParameter(cmdList, Deferred_PSCBuffer);
+        DX12::BindTempConstantBuffer(cmdList, shadingConstants, DeferredParams_PSCBuffer, CmdListMode::Compute);
 
-        ConstantBuffer<SunShadowConstants>& sunShadowConstants = meshRenderer.SunShadowConstantBuffer();
-        sunShadowConstants.Upload();
-        sunShadowConstants.SetAsComputeRootParameter(cmdList, Deferred_ShadowCBuffer);
+        const SunShadowConstants& sunShadowConstants = meshRenderer.SunShadowConstantData();
+        DX12::BindTempConstantBuffer(cmdList, sunShadowConstants, DeferredParams_ShadowCBuffer, CmdListMode::Compute);
 
-        cmdList->SetComputeRootConstantBufferView(Deferred_LightCBuffer, spotLightBuffer.InternalBuffer.GPUAddress);
+        cmdList->SetComputeRootConstantBufferView(DeferredParams_LightCBuffer, spotLightBuffer.InternalBuffer.GPUAddress);
 
-        AppSettings::BindCBufferCompute(cmdList, Deferred_AppSettings);
+        AppSettings::BindCBufferCompute(cmdList, DeferredParams_AppSettings);
 
-        D3D12_CPU_DESCRIPTOR_HANDLE skyTargetSRV = DX12::NullTexture2DSRV.CPUHandle;
+        uint32 skyTargetSRV = DX12::NullTexture2DSRV;
         if(msaaEnabled)
             skyTargetSRV = mainTarget.SRV();
 
-        D3D12_CPU_DESCRIPTOR_HANDLE descriptors[] =
+        uint32 srvIndices[] =
         {
-            deferredTarget.UAV.CPUHandle,
             meshRenderer.SunShadowMap().SRV(),
             meshRenderer.SpotLightShadowMap().SRV(),
-            meshRenderer.MaterialTextureIndicesBuffer().SRV(),
-            decalBuffer.SRV(),
-            decalClusterBuffer.SRV(),
-            spotLightClusterBuffer.SRV(),
-            nonMsaaTileBuffer.SRV(),
-            msaaTileBuffer.SRV(),
+            meshRenderer.MaterialTextureIndicesBuffer().SRV,
+            decalBuffer.SRV,
+            decalClusterBuffer.SRV,
+            spotLightClusterBuffer.SRV,
+            nonMsaaTileBuffer.SRV,
+            msaaTileBuffer.SRV,
             tangentFrameTarget.SRV(),
             uvTarget.SRV(),
             uvGradientsTarget.SRV(),
             materialIDTarget.SRV(),
             depthBuffer.SRV(),
             skyTargetSRV,
-            msaaMaskBuffer.SRV(),
+            msaaMaskBuffer.SRV,
         };
 
-        // We need to get everything into a contiguous shader-visible descriptor table
-        const uint64 numMaterialTextures = currentModel->MaterialTextures().Count();
-        LinearDescriptorHeap& descriptorHeap = DX12::SRVDescriptorHeapGPU[DX12::CurrFrameIdx];
-        DescriptorHandle tableStart = descriptorHeap.Allocate(ArraySize_(descriptors) + numMaterialTextures);
+        DX12::BindTempConstantBuffer(cmdList, srvIndices, DeferredParams_SRVIndices, CmdListMode::Compute);
 
-        // First the non-material descriptors
-        for(uint64 i = 0; i < ArraySize_(descriptors); ++i)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE dstDescriptor = tableStart.CPUHandle;
-            dstDescriptor.ptr += i * DX12::SRVDescriptorSize;
-            DX12::Device->CopyDescriptorsSimple(1, dstDescriptor, descriptors[i], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        }
-
-        // And now the material textures
-        D3D12_CPU_DESCRIPTOR_HANDLE srcMaterialTextures = currentModel->MaterialTextureDescriptors();
-        D3D12_CPU_DESCRIPTOR_HANDLE dstMaterialTextures = tableStart.CPUHandle;
-        dstMaterialTextures.ptr += ArraySize_(descriptors) * DX12::SRVDescriptorSize;
-        DX12::Device->CopyDescriptorsSimple(uint32(numMaterialTextures), dstMaterialTextures, srcMaterialTextures, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-        cmdList->SetComputeRootDescriptorTable(Deferred_Descriptors, tableStart.GPUHandle);
-
-        // Bind the decal textures
-        D3D12_CPU_DESCRIPTOR_HANDLE decalDescriptors[AppSettings::NumDecalTextures] = { };
-        for(uint64 i = 0; i < AppSettings::NumDecalTextures; ++i)
-            decalDescriptors[i] = decalTextures[i].SRV.CPUHandle;
-
-        DX12::BindShaderResources(cmdList, Deferred_DecalDescriptors, AppSettings::NumDecalTextures, decalDescriptors, CmdListMode::Compute);
+        D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { deferredTarget.UAV };
+        DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), DeferredParams_UAVDescriptors, CmdListMode::Compute);
 
         if(msaaEnabled)
             cmdList->ExecuteIndirect(deferredCmdSignature, 1, nonMsaaArgsBuffer.Resource(), 0, nullptr, 0);
@@ -2069,8 +2126,8 @@ void BindlessDeferred::RenderDeferred()
             // Render the sky in the empty areas
             mainTarget.Transition(cmdList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-            D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { mainTarget.RTV.CPUHandle };
-            cmdList->OMSetRenderTargets(1, rtvHandles, false, &depthBuffer.DSV.CPUHandle);
+            D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { mainTarget.RTV };
+            cmdList->OMSetRenderTargets(1, rtvHandles, false, &depthBuffer.DSV);
 
             skybox.RenderSky(cmdList, camera.ViewMatrix(), camera.ProjectionMatrix(), skyCache, true);
 
@@ -2113,7 +2170,7 @@ void BindlessDeferred::RenderResolve()
 
     resolveTarget.MakeWritable(cmdList);
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[1] = { resolveTarget.RTV.CPUHandle };
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[1] = { resolveTarget.RTV };
     cmdList->OMSetRenderTargets(ArraySize_(rtvs), rtvs, false, nullptr);
     DX12::SetViewport(cmdList, resolveTarget.Width(), resolveTarget.Height());
 
@@ -2123,13 +2180,13 @@ void BindlessDeferred::RenderResolve()
     cmdList->SetGraphicsRootSignature(resolveRootSignature);
     cmdList->SetPipelineState(pso);
 
-    cmdList->SetGraphicsRoot32BitConstant(0, uint32(mainTarget.Width()), 0);
-    cmdList->SetGraphicsRoot32BitConstant(0, uint32(mainTarget.Height()), 1);
+    DX12::BindStandardDescriptorTable(cmdList, ResolveParams_StandardDescriptors, CmdListMode::Graphics);
 
-    AppSettings::BindCBufferGfx(cmdList, 1);
+    cmdList->SetGraphicsRoot32BitConstant(ResolveParams_Constants, uint32(mainTarget.Width()), 0);
+    cmdList->SetGraphicsRoot32BitConstant(ResolveParams_Constants, uint32(mainTarget.Height()), 1);
+    cmdList->SetGraphicsRoot32BitConstant(ResolveParams_Constants, deferred ? deferredMSAATarget.SRV() : mainTarget.SRV(), 2);
 
-    D3D12_CPU_DESCRIPTOR_HANDLE srvs[1] = { deferred ? deferredMSAATarget.SRV() : mainTarget.SRV() };
-    DX12::BindShaderResources(cmdList, 2, ArraySize_(srvs), srvs);
+    AppSettings::BindCBufferGfx(cmdList, ResolveParams_AppSettings);
 
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmdList->IASetIndexBuffer(nullptr);
@@ -2154,17 +2211,21 @@ void BindlessDeferred::RenderPicking()
     cmdList->SetPipelineState(AppSettings::MSAAMode != MSAAModes::MSAANone ? pickingPSOs[1] : pickingPSOs[0]);
     cmdList->SetComputeRootSignature(pickingRS);
 
-    pickingConstants.Data.InverseViewProjection = Float4x4::Invert(camera.ViewProjectionMatrix());
-    pickingConstants.Data.PixelPos = Uint2(currMouseState.X, currMouseState.Y);
-    pickingConstants.Data.RTSize.x = float(mainTarget.Width());
-    pickingConstants.Data.RTSize.y = float(mainTarget.Height());
-    pickingConstants.Upload();
-    pickingConstants.SetAsComputeRootParameter(cmdList, 0);
+    DX12::BindStandardDescriptorTable(cmdList, PickingParams_StandardDescriptors, CmdListMode::Compute);
+
+    PickingConstants pickingConstants;
+    pickingConstants.InverseViewProjection = Float4x4::Invert(camera.ViewProjectionMatrix());
+    pickingConstants.PixelPos = Uint2(currMouseState.X, currMouseState.Y);
+    pickingConstants.RTSize.x = float(mainTarget.Width());
+    pickingConstants.RTSize.y = float(mainTarget.Height());
+    pickingConstants.TangentMapIdx = tangentFrameTarget.SRV();
+    pickingConstants.DepthMapIdx = depthBuffer.SRV();
+    DX12::BindTempConstantBuffer(cmdList, pickingConstants, PickingParams_CBuffer, CmdListMode::Compute);
 
     pickingBuffer.MakeWritable(cmdList);
 
-    D3D12_CPU_DESCRIPTOR_HANDLE descriptors[3] = { tangentFrameTarget.SRV(), depthBuffer.SRV(), pickingBuffer.UAV() };
-    DX12::BindShaderResources(cmdList, 1, ArraySize_(descriptors), descriptors, CmdListMode::Compute);
+    D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { pickingBuffer.UAV };
+    DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), PickingParams_UAVDescriptors, CmdListMode::Compute);
 
     cmdList->Dispatch(1, 1, 1);
 
@@ -2207,25 +2268,26 @@ void BindlessDeferred::RenderClusterVisualizer()
     cmdList->SetGraphicsRootSignature(clusterVisRootSignature);
     cmdList->SetPipelineState(clusterVisPSO);
 
+    DX12::BindStandardDescriptorTable(cmdList, ClusterVisParams_StandardDescriptors, CmdListMode::Graphics);
+
     Float4x4 invProjection = Float4x4::Invert(camera.ProjectionMatrix());
     Float3 farTopRight = Float3::Transform(Float3(1.0f, 1.0f, 1.0f), invProjection);
     Float3 farBottomLeft = Float3::Transform(Float3(-1.0f, -1.0f, 1.0f), invProjection);
 
-    clusterVisConstants.Data.Projection = camera.ProjectionMatrix();
-    clusterVisConstants.Data.ViewMin = Float3(farBottomLeft.x, farBottomLeft.y, camera.NearClip());
-    clusterVisConstants.Data.NearClip = camera.NearClip();
-    clusterVisConstants.Data.ViewMax = Float3(farTopRight.x, farTopRight.y, camera.FarClip());
-    clusterVisConstants.Data.InvClipRange = 1.0f / (camera.FarClip() - camera.NearClip());
-    clusterVisConstants.Data.DisplaySize = displaySize;
-    clusterVisConstants.Data.NumXTiles = uint32(AppSettings::NumXTiles);
-    clusterVisConstants.Data.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
-    clusterVisConstants.Upload();
-    clusterVisConstants.SetAsGfxRootParameter(cmdList, 0);
+    ClusterVisConstants clusterVisConstants;
+    clusterVisConstants.Projection = camera.ProjectionMatrix();
+    clusterVisConstants.ViewMin = Float3(farBottomLeft.x, farBottomLeft.y, camera.NearClip());
+    clusterVisConstants.NearClip = camera.NearClip();
+    clusterVisConstants.ViewMax = Float3(farTopRight.x, farTopRight.y, camera.FarClip());
+    clusterVisConstants.InvClipRange = 1.0f / (camera.FarClip() - camera.NearClip());
+    clusterVisConstants.DisplaySize = displaySize;
+    clusterVisConstants.NumXTiles = uint32(AppSettings::NumXTiles);
+    clusterVisConstants.NumXYTiles = uint32(AppSettings::NumXTiles * AppSettings::NumYTiles);
+    clusterVisConstants.DecalClusterBufferIdx = decalClusterBuffer.SRV;
+    clusterVisConstants.SpotLightClusterBufferIdx = spotLightClusterBuffer.SRV;
+    DX12::BindTempConstantBuffer(cmdList, clusterVisConstants, ClusterVisParams_CBuffer, CmdListMode::Graphics);
 
-    AppSettings::BindCBufferGfx(cmdList, 1);
-
-    D3D12_CPU_DESCRIPTOR_HANDLE srvs[] = { decalClusterBuffer.SRV(), spotLightClusterBuffer.SRV() };
-    DX12::BindShaderResources(cmdList, 2, ArraySize_(srvs), srvs);
+    AppSettings::BindCBufferGfx(cmdList, ClusterVisParams_AppSettings);
 
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmdList->IASetIndexBuffer(nullptr);
@@ -2253,6 +2315,6 @@ void BindlessDeferred::RenderHUD(const Timer& timer)
 
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
-    BindlessDeferred app;
+    BindlessDeferred app(lpCmdLine);
     app.Run();
 }

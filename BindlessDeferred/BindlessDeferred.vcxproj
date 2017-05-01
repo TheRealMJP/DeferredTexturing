@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
@@ -14,19 +14,19 @@
     <ProjectGuid>{FA705507-9C58-4413-8878-8795F3B9897D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>BindlessDeferred</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.14393.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.15063.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -37,11 +37,11 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="..\SampleFramework12\v1.00\SF12.props" />
+    <Import Project="..\SampleFramework12\v1.01\SF12.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="..\SampleFramework12\v1.00\SF12.props" />
+    <Import Project="..\SampleFramework12\v1.01\SF12.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -85,110 +85,110 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\SampleFramework12\v1.00\App.cpp">
+    <ClCompile Include="..\SampleFramework12\v1.01\App.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.00\Assert.cpp">
+    <ClCompile Include="..\SampleFramework12\v1.01\Assert.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.00\FileIO.cpp">
+    <ClCompile Include="..\SampleFramework12\v1.01\EnkiTS\TaskScheduler.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\EnkiTS\TaskScheduler_c.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\FileIO.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\Camera.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\DX12_Helpers.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\DX12_Upload.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\PostProcessHelper.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\ShadowHelper.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\SwapChain.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\DX12.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\DXErr.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\GraphicsTypes.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\Model.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\Profiler.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\Sampling.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\SH.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\ShaderCompilation.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\Skybox.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\Spectrum.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\SpriteFont.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\SpriteRenderer.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Graphics\Textures.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\ImGuiHelper.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Input.cpp">
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Camera.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\DX12_Helpers.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\DX12_Upload.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\PostProcessHelper.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\ShadowHelper.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\SwapChain.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\DX12.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\DXErr.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\GraphicsTypes.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Model.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Profiler.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Sampling.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\SH.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\ShaderCompilation.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Skybox.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Spectrum.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\SpriteFont.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\SpriteRenderer.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Textures.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGuiHelper.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Input.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.00\MurmurHash.cpp">
+    <ClCompile Include="..\SampleFramework12\v1.01\MurmurHash.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.00\PCH.cpp">
+    <ClCompile Include="..\SampleFramework12\v1.01\PCH.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.00\Settings.cpp">
+    <ClCompile Include="..\SampleFramework12\v1.01\Settings.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.00\SF12_Math.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Timer.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\TinyEXR.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Utility.cpp" />
-    <ClCompile Include="..\SampleFramework12\v1.00\Window.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\SF12_Math.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Timer.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\TinyEXR.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Utility.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\Window.cpp" />
     <ClCompile Include="AppSettings.cpp" />
-    <ClCompile Include="EnkiTS\TaskScheduler.cpp" />
-    <ClCompile Include="EnkiTS\TaskScheduler_c.cpp" />
     <ClCompile Include="MeshRenderer.cpp" />
     <ClCompile Include="PostProcessor.cpp" />
     <ClCompile Include="BindlessDeferred.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\SampleFramework12\v1.00\App.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Assert.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Containers.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Exceptions.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\FileIO.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\BRDF.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Camera.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\DX12_Helpers.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\DX12_Upload.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\PostProcessHelper.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\ShadowHelper.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\SwapChain.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\DX12.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\DXErr.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Filtering.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\GraphicsTypes.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Model.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Profiler.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Sampling.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\SH.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\ShaderCompilation.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Skybox.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Spectrum.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\SpriteFont.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\SpriteRenderer.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Graphics\Textures.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\ImGuiHelper.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Input.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\InterfacePointers.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\MurmurHash.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\PCH.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Serialization.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Settings.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\SF12_Math.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Timer.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\TinyEXR.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Utility.h" />
-    <ClInclude Include="..\SampleFramework12\v1.00\Window.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\App.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Assert.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Containers.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\EnkiTS\LockLessMultiReadPipe.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\EnkiTS\TaskScheduler.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\EnkiTS\TaskScheduler_c.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Exceptions.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\FileIO.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\BRDF.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Camera.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\DX12_Helpers.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\DX12_Upload.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\PostProcessHelper.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\ShadowHelper.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\SwapChain.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\DX12.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\DXErr.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Filtering.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\GraphicsTypes.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Model.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Profiler.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Sampling.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\SH.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\ShaderCompilation.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Skybox.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Spectrum.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\SpriteFont.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\SpriteRenderer.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Textures.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGuiHelper.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Input.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\InterfacePointers.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\MurmurHash.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\PCH.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Serialization.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Settings.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\SF12_Math.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Timer.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\TinyEXR.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Utility.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\Window.h" />
     <ClInclude Include="AppConfig.h" />
     <ClInclude Include="AppSettings.h" />
-    <ClInclude Include="EnkiTS\LockLessMultiReadPipe.h" />
-    <ClInclude Include="EnkiTS\TaskScheduler.h" />
-    <ClInclude Include="EnkiTS\TaskScheduler_c.h" />
     <ClInclude Include="MeshRenderer.h" />
     <ClInclude Include="PostProcessor.h" />
     <ClInclude Include="BindlessDeferred.h" />
@@ -210,10 +210,15 @@
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="..\SampleFramework12\v1.00\sf12.natvis" />
+    <Natvis Include="..\SampleFramework12\v1.01\sf12.natvis" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\Externals\WinPixEventRuntime\bin\WinPixEventRuntime.dll">
+      <FileType>Document</FileType>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Externals\DXCompiler\Bin\dxcompiler.dll">
       <FileType>Document</FileType>
     </CustomBuild>
   </ItemGroup>
