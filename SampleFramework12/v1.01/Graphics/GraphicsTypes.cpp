@@ -314,10 +314,10 @@ MapResult Buffer::Map()
     Assert_(Dynamic);
     Assert_(GPUWritable == false);
 
-    // Make sure that we only do this at most once per frame
+    // Make sure that we always do this once per frame
     Assert_(UploadFrame != DX12::CurrentCPUFrame);
     UploadFrame = DX12::CurrentCPUFrame;
-    CurrBuffer = (CurrBuffer + 1) % DX12::RenderLatency;
+    CurrBuffer = DX12::CurrentCPUFrame % DX12::RenderLatency;
 
     MapResult result;
     result.ResourceOffset = CurrBuffer * Size;
@@ -339,17 +339,10 @@ uint64 Buffer::UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset,
 {
     Assert_(GPUWritable && Dynamic);
     Assert_(dstOffset + srcSize <= Size);
+    Assert_(UploadFrame != DX12::CurrentCPUFrame || allowOverwrite);
 
-    if(UploadFrame != DX12::CurrentCPUFrame)
-    {
-        UploadFrame = DX12::CurrentCPUFrame;
-        CurrBuffer = (CurrBuffer + 1) % DX12::RenderLatency;
-    }
-    else
-    {
-        // Make sure that we only do this at most once per frame if allowOverwrite is false
-        Assert_(allowOverwrite);
-    }
+    UploadFrame = DX12::CurrentCPUFrame;
+    CurrBuffer = DX12::CurrentCPUFrame % DX12::RenderLatency;
 
     uint64 currOffset = CurrBuffer * Size;
 
@@ -396,7 +389,7 @@ void Buffer::UAVBarrier(ID3D12GraphicsCommandList* cmdList) const
 
 bool Buffer::ReadyForBinding() const
 {
-    return Initialized();
+    return Initialized() && (Dynamic == false || UploadFrame == DX12::CurrentCPUFrame);
 }
 
 #endif
