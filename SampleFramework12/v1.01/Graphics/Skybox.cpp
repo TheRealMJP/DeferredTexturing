@@ -13,6 +13,7 @@
 
 #include "../Utility.h"
 #include "../SF12_Math.h"
+#include "../HosekSky/ArHosekSkyModel.h"
 #include "ShaderCompilation.h"
 #include "Textures.h"
 #include "Spectrum.h"

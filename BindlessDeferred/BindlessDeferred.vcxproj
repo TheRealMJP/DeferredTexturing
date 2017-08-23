@@ -118,7 +118,11 @@
     <ClCompile Include="..\SampleFramework12\v1.01\Graphics\SpriteFont.cpp" />
     <ClCompile Include="..\SampleFramework12\v1.01\Graphics\SpriteRenderer.cpp" />
     <ClCompile Include="..\SampleFramework12\v1.01\Graphics\Textures.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\HosekSky\ArHosekSkyModel.cpp" />
     <ClCompile Include="..\SampleFramework12\v1.01\ImGuiHelper.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGui\imgui.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGui\imgui_demo.cpp" />
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGui\imgui_draw.cpp" />
     <ClCompile Include="..\SampleFramework12\v1.01\Input.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
@@ -175,7 +179,14 @@
     <ClInclude Include="..\SampleFramework12\v1.01\Graphics\SpriteFont.h" />
     <ClInclude Include="..\SampleFramework12\v1.01\Graphics\SpriteRenderer.h" />
     <ClInclude Include="..\SampleFramework12\v1.01\Graphics\Textures.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\HosekSky\ArHosekSkyModel.h" />
     <ClInclude Include="..\SampleFramework12\v1.01\ImGuiHelper.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\imconfig.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\imgui.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\imgui_internal.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\stb_rect_pack.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\stb_textedit.h" />
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\stb_truetype.h" />
     <ClInclude Include="..\SampleFramework12\v1.01\Input.h" />
     <ClInclude Include="..\SampleFramework12\v1.01\InterfacePointers.h" />
     <ClInclude Include="..\SampleFramework12\v1.01\MurmurHash.h" />

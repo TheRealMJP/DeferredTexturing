@@ -98,11 +98,11 @@ typedef uint32_t bool32;
 #include <DirectXCollision.h>
 
 // DirectX Tex
-#include "..\\..\\Externals\\DirectXTex Aug 2015\\Include\\DirectXTex.h"
+#include "..\\..\\Externals\\DirectXTex July 2017\\Include\\DirectXTex.h"
 #ifdef _DEBUG
-    #pragma comment(lib, "..\\Externals\\DirectXTex Aug 2015\\Lib 2015\\Debug\\DirectXTex.lib")
+    #pragma comment(lib, "..\\Externals\\DirectXTex July 2017\\Lib 2017\\Debug\\DirectXTex.lib")
 #else
-    #pragma comment(lib, "..\\Externals\\DirectXTex Aug 2015\\Lib 2015\\Release\\DirectXTex.lib")
+    #pragma comment(lib, "..\\Externals\\DirectXTex July 2017\\Lib 2017\\Release\\DirectXTex.lib")
 #endif
 
 // Pix for Windows
@@ -157,24 +157,6 @@ typedef uint32_t bool32;
 #include "..\\..\\Externals\\Assimp-3.1.1\\include\\scene.h"
 #include "..\\..\\Externals\\Assimp-3.1.1\\include\\postprocess.h"
 #pragma comment(lib, "..\\Externals\\Assimp-3.1.1\\lib\\assimp.lib")
-
-#if EnableSkyModel_
-    // HosekSky lib
-    #include "..\\..\\Externals\\HosekSky\\Include\\ArHosekSkyModel.h"
-    #ifdef _DEBUG
-        #pragma comment(lib, "..\\Externals\\HosekSky\\Lib 2015\\HosekSky_Dbg.lib")
-    #else
-        #pragma comment(lib, "..\\Externals\\HosekSky\\Lib 2015\\HosekSky.lib")
-    #endif
-#endif
-
-// Imgui
-#include "..\\..\\Externals\\imgui-1.46\\Include\\imgui.h"
-#ifdef _DEBUG
-    #pragma comment(lib, "..\\Externals\\imgui-1.46\\Lib\\Debug\\imgui.lib")
-#else
-    #pragma comment(lib, "..\\Externals\\imgui-1.46\\Lib\\Release\\imgui.lib")
-#endif
 
 // Embree
 #if EnableEmbree_

@@ -80,9 +80,6 @@
     <ClCompile Include="..\SampleFramework12\v1.01\SF12_Math.cpp">
       <Filter>SampleFramework12</Filter>
     </ClCompile>
-    <ClCompile Include="..\SampleFramework12\v1.01\ImGuiHelper.cpp">
-      <Filter>SampleFramework12</Filter>
-    </ClCompile>
     <ClCompile Include="..\SampleFramework12\v1.01\Graphics\DX12.cpp">
       <Filter>SampleFramework12\Graphics</Filter>
     </ClCompile>
@@ -106,6 +103,21 @@
     </ClCompile>
     <ClCompile Include="..\SampleFramework12\v1.01\EnkiTS\TaskScheduler_c.cpp">
       <Filter>SampleFramework12\EnkiTS</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGui\imgui.cpp">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGui\imgui_demo.cpp">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGui\imgui_draw.cpp">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SampleFramework12\v1.01\ImGuiHelper.cpp">
+      <Filter>SampleFramework12</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SampleFramework12\v1.01\HosekSky\ArHosekSkyModel.cpp">
+      <Filter>SampleFramework12\HosekSky</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -206,9 +218,6 @@
     <ClInclude Include="..\SampleFramework12\v1.01\SF12_Math.h">
       <Filter>SampleFramework12</Filter>
     </ClInclude>
-    <ClInclude Include="..\SampleFramework12\v1.01\ImGuiHelper.h">
-      <Filter>SampleFramework12</Filter>
-    </ClInclude>
     <ClInclude Include="..\SampleFramework12\v1.01\Graphics\DX12.h">
       <Filter>SampleFramework12\Graphics</Filter>
     </ClInclude>
@@ -238,6 +247,30 @@
     <ClInclude Include="..\SampleFramework12\v1.01\EnkiTS\LockLessMultiReadPipe.h">
       <Filter>SampleFramework12\EnkiTS</Filter>
     </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\imconfig.h">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\imgui.h">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\imgui_internal.h">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\stb_rect_pack.h">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\stb_textedit.h">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGui\stb_truetype.h">
+      <Filter>SampleFramework12\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\ImGuiHelper.h">
+      <Filter>SampleFramework12</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SampleFramework12\v1.01\HosekSky\ArHosekSkyModel.h">
+      <Filter>SampleFramework12\HosekSky</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="SampleFramework12">
@@ -251,6 +284,12 @@
     </Filter>
     <Filter Include="SampleFramework12\EnkiTS">
       <UniqueIdentifier>{f6b57266-b3a1-4989-a6da-bb809c7a43b0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SampleFramework12\ImGui">
+      <UniqueIdentifier>{d02e01ba-7d18-49be-9c34-b0f749072bbb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SampleFramework12\HosekSky">
+      <UniqueIdentifier>{04851386-edd7-402e-bacf-16bf98648c22}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

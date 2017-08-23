@@ -17,6 +17,7 @@
 #include "FileIO.h"
 #include "Settings.h"
 #include "ImGuiHelper.h"
+#include "ImGui/imgui.h"
 
 // AppSettings framework
 namespace AppSettings

@@ -14,6 +14,7 @@
 #include "Graphics/GraphicsTypes.h"
 #include "Graphics/ShaderCompilation.h"
 #include "Graphics/Textures.h"
+#include "ImGui/imgui.h"
 
 namespace SampleFramework12
 {
@@ -308,7 +309,7 @@ void EndFrame(ID3D12GraphicsCommandList* cmdList, D3D12_CPU_DESCRIPTOR_HANDLE rt
             }
             else
             {
-                const D3D12_RECT r = { int32(drawCmd->ClipRect.x), int32(drawCmd->ClipRect.y), int32(drawCmd->ClipRect.z), int32(drawCmd->ClipRect.w) };                
+                const D3D12_RECT r = { int32(drawCmd->ClipRect.x), int32(drawCmd->ClipRect.y), int32(drawCmd->ClipRect.z), int32(drawCmd->ClipRect.w) };
 
                 if(r.left < r.right && r.top < r.bottom)
                 {

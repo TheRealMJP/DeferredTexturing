@@ -11,6 +11,7 @@
 
 #include "PCH.h"
 #include "SF12_Math.h"
+#include "ImGui/imgui.h"
 
 namespace SampleFramework12
 {

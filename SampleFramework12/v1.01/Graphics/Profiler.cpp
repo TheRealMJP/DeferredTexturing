@@ -11,6 +11,7 @@
 #include "Profiler.h"
 #include "DX12.h"
 #include "..\\Utility.h"
+#include "..\\ImGui\ImGui.h"
 
 using std::wstring;
 using std::map;

@@ -13,6 +13,7 @@
 #include "Utility.h"
 #include "App.h"
 #include "ImGuiHelper.h"
+#include "ImGui/imgui.h"
 
 namespace SampleFramework12
 {

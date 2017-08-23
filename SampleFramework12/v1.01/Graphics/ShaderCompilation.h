@@ -124,14 +124,6 @@ public:
         return byteCode;
     }
 
-    // Compatability hack, remove this
-    operator ID3D11VertexShader*() const { return nullptr; }
-    operator ID3D11HullShader*() const { return nullptr; }
-    operator ID3D11DomainShader*() const { return nullptr; }
-    operator ID3D11GeometryShader*() const { return nullptr; }
-    operator ID3D11PixelShader*() const { return nullptr; }
-    operator ID3D11ComputeShader*() const { return nullptr; }
-
 private:
 
     const CompiledShader* ptr;
