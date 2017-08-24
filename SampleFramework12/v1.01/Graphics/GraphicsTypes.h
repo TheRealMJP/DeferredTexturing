@@ -100,7 +100,8 @@ struct Buffer
     MapResult Map();
     MapResult MapAndSetData(const void* data, uint64 dataSize);
     template<typename T> MapResult MapAndSetData(const T& data) { return MapAndSetData(&data, sizeof(T)); }
-    uint64 UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset, bool allowOverwrite);
+    uint64 UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset);
+    uint64 MultiUpdateData(const void* srcData[], uint64 srcSize[], uint64 dstOffset[], uint64 numUpdates);
 
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const;
     void MakeReadable(ID3D12GraphicsCommandList* cmdList) const;
@@ -152,7 +153,8 @@ struct ConstantBuffer
     template<typename T> T* Map() { return reinterpret_cast<T*>(Map()); }
     void MapAndSetData(const void* data, uint64 dataSize);
     template<typename T> void MapAndSetData(const T& data) { MapAndSetData(&data, sizeof(T)); }
-    void UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset, bool allowOverwrite);
+    void UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset);
+    void MultiUpdateData(const void* srcData[], uint64 srcSize[], uint64 dstOffset[], uint64 numUpdates);
 };
 
 struct StructuredBufferInit
@@ -193,7 +195,8 @@ struct StructuredBuffer
     void* Map();
     template<typename T> T* Map() { return reinterpret_cast<T*>(Map()); }
     void MapAndSetData(const void* data, uint64 numElements);
-    void UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset, bool allowOverwrite);
+    void UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset);
+    void MultiUpdateData(const void* srcData[], uint64 srcNumElements[], uint64 dstElemOffset[], uint64 numUpdates);
 
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const;
     void MakeReadable(ID3D12GraphicsCommandList* cmdList) const;
@@ -242,7 +245,8 @@ struct FormattedBuffer
     void* Map();
     template<typename T> T* Map() { return reinterpret_cast<T*>(Map()); };
     void MapAndSetData(const void* data, uint64 numElements);
-    void UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset, bool allowOverwrite);
+    void UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset);
+    void MultiUpdateData(const void* srcData[], uint64 srcNumElements[], uint64 dstElemOffset[], uint64 numUpdates);
 
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const;
     void MakeReadable(ID3D12GraphicsCommandList* cmdList) const;
@@ -289,7 +293,8 @@ struct RawBuffer
     void* Map();
     template<typename T> T* Map() { return reinterpret_cast<T*>(Map()); };
     void MapAndSetData(const void* data, uint64 numElements);
-    void UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset, bool allowOverwrite);
+    void UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset);
+    void MultiUpdateData(const void* srcData[], uint64 srcNumElements[], uint64 dstElemOffset[], uint64 numUpdates);
 
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const;
     void MakeReadable(ID3D12GraphicsCommandList* cmdList) const;

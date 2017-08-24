@@ -37,7 +37,7 @@ struct MainPassData
     Decal CursorDecal;
     float CursorDecalIntensity = 0.0f;
     const RawBuffer* DecalClusterBuffer = nullptr;
-    const StructuredBuffer* SpotLightBuffer = nullptr;
+    const ConstantBuffer* SpotLightBuffer = nullptr;
     const RawBuffer* SpotLightClusterBuffer = nullptr;
 };
 

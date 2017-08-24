@@ -61,7 +61,7 @@ protected:
     uint64 numIntersectingDecals = 0;
 
     Array<SpotLight> spotLights;
-    StructuredBuffer spotLightBuffer;
+    ConstantBuffer spotLightBuffer;
     StructuredBuffer spotLightBoundsBuffer;
     StructuredBuffer spotLightInstanceBuffer;
     RawBuffer spotLightClusterBuffer;

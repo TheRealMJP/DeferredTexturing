@@ -335,22 +335,38 @@ MapResult Buffer::MapAndSetData(const void* data, uint64 dataSize)
     return result;
 }
 
-uint64 Buffer::UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset, bool allowOverwrite)
+uint64 Buffer::UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset)
+{
+    return MultiUpdateData(&srcData, &srcSize, &dstOffset, 1);
+}
+
+uint64 Buffer::MultiUpdateData(const void* srcData[], uint64 srcSize[], uint64 dstOffset[], uint64 numUpdates)
 {
     Assert_(GPUWritable && Dynamic);
-    Assert_(dstOffset + srcSize <= Size);
-    Assert_(UploadFrame != DX12::CurrentCPUFrame || allowOverwrite);
+    Assert_(numUpdates > 0);
+    Assert_(UploadFrame != DX12::CurrentCPUFrame);
 
     UploadFrame = DX12::CurrentCPUFrame;
     CurrBuffer = DX12::CurrentCPUFrame % DX12::RenderLatency;
 
     uint64 currOffset = CurrBuffer * Size;
 
-    UploadContext uploadContext = DX12::ResourceUploadBegin(srcSize);
+    uint64 totalUpdateSize = 0;
+    for(uint64 i = 0; i < numUpdates; ++i)
+        totalUpdateSize += srcSize[i];
 
-    memcpy(uploadContext.CPUAddress, srcData, srcSize);
+    UploadContext uploadContext = DX12::ResourceUploadBegin(totalUpdateSize);
 
-    uploadContext.CmdList->CopyBufferRegion(Resource, currOffset + dstOffset, uploadContext.Resource, uploadContext.ResourceOffset, srcSize);
+    uint64 uploadOffset  = 0;
+    for(uint64 i = 0; i < numUpdates; ++i)
+    {
+        Assert_(dstOffset[i] + srcSize[i] <= Size);
+        Assert_(uploadOffset + srcSize[i] <= totalUpdateSize);
+        memcpy(reinterpret_cast<uint8*>(uploadContext.CPUAddress) + uploadOffset, srcData[i], srcSize[i]);
+        uploadContext.CmdList->CopyBufferRegion(Resource, currOffset + dstOffset[i], uploadContext.Resource, uploadContext.ResourceOffset + uploadOffset, srcSize[i]);
+
+        uploadOffset += srcSize[i];
+    }
 
     DX12::ResourceUploadEnd(uploadContext);
 
@@ -441,9 +457,14 @@ void ConstantBuffer::MapAndSetData(const void* data, uint64 dataSize)
     memcpy(cpuAddr, data, dataSize);
 }
 
-void ConstantBuffer::UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset, bool allowOverwrite)
+void ConstantBuffer::UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset)
 {
-    CurrentGPUAddress = InternalBuffer.UpdateData(srcData, srcSize, dstOffset, allowOverwrite);
+    CurrentGPUAddress = InternalBuffer.UpdateData(srcData, srcSize, dstOffset);
+}
+
+void ConstantBuffer::MultiUpdateData(const void* srcData[], uint64 srcSize[], uint64 dstOffset[], uint64 numUpdates)
+{
+    CurrentGPUAddress = InternalBuffer.MultiUpdateData(srcData, srcSize, dstOffset, numUpdates);
 }
 
 // == StructuredBuffer ============================================================================
@@ -577,9 +598,23 @@ void StructuredBuffer::MapAndSetData(const void* data, uint64 numElements)
     memcpy(cpuAddr, data, numElements * Stride);
 }
 
-void StructuredBuffer::UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset, bool allowOverwrite)
+void StructuredBuffer::UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset)
 {
-    GPUAddress = InternalBuffer.UpdateData(srcData, srcNumElements * Stride, dstElemOffset * Stride, allowOverwrite);
+    GPUAddress = InternalBuffer.UpdateData(srcData, srcNumElements * Stride, dstElemOffset * Stride);
+}
+
+void StructuredBuffer::MultiUpdateData(const void* srcData[], uint64 srcNumElements[], uint64 dstElemOffset[], uint64 numUpdates)
+{
+    uint64 srcSizes[16];
+    uint64 dstOffsets[16];
+    Assert_(numUpdates <= ArraySize_(srcSizes));
+    for(uint64 i = 0; i < numUpdates; ++i)
+    {
+        srcSizes[i] = srcNumElements[i] * Stride;
+        dstOffsets[i] = dstElemOffset[i] * Stride;
+    }
+
+    GPUAddress = InternalBuffer.MultiUpdateData(srcData, srcSizes, dstOffsets, numUpdates);
 }
 
 void StructuredBuffer::Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const
@@ -699,9 +734,23 @@ void FormattedBuffer::MapAndSetData(const void* data, uint64 numElements)
     memcpy(cpuAddr, data, numElements * Stride);
 }
 
-void FormattedBuffer::UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset, bool allowOverwrite)
+void FormattedBuffer::UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset)
 {
-    GPUAddress = InternalBuffer.UpdateData(srcData, srcNumElements * Stride, dstElemOffset * Stride, allowOverwrite);
+    GPUAddress = InternalBuffer.UpdateData(srcData, srcNumElements * Stride, dstElemOffset * Stride);
+}
+
+void FormattedBuffer::MultiUpdateData(const void* srcData[], uint64 srcNumElements[], uint64 dstElemOffset[], uint64 numUpdates)
+{
+    uint64 srcSizes[16];
+    uint64 dstOffsets[16];
+    Assert_(numUpdates <= ArraySize_(srcSizes));
+    for(uint64 i = 0; i < numUpdates; ++i)
+    {
+        srcSizes[i] = srcNumElements[i] * Stride;
+        dstOffsets[i] = dstElemOffset[i] * Stride;
+    }
+
+    GPUAddress = InternalBuffer.MultiUpdateData(srcData, srcSizes, dstOffsets, numUpdates);
 }
 
 void FormattedBuffer::Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const
@@ -803,9 +852,23 @@ void RawBuffer::MapAndSetData(const void* data, uint64 numElements)
     memcpy(cpuAddr, data, numElements * Stride);
 }
 
-void RawBuffer::UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset, bool allowOverwrite)
+void RawBuffer::UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset)
 {
-    GPUAddress = InternalBuffer.UpdateData(srcData, srcNumElements * Stride, dstElemOffset * Stride, allowOverwrite);
+    GPUAddress = InternalBuffer.UpdateData(srcData, srcNumElements * Stride, dstElemOffset * Stride);
+}
+
+void RawBuffer::MultiUpdateData(const void* srcData[], uint64 srcNumElements[], uint64 dstElemOffset[], uint64 numUpdates)
+{
+    uint64 srcSizes[16];
+    uint64 dstOffsets[16];
+    Assert_(numUpdates <= ArraySize_(srcSizes));
+    for(uint64 i = 0; i < numUpdates; ++i)
+    {
+        srcSizes[i] = srcNumElements[i] * Stride;
+        dstOffsets[i] = dstElemOffset[i] * Stride;
+    }
+
+    GPUAddress = InternalBuffer.MultiUpdateData(srcData, srcSizes, dstOffsets, numUpdates);
 }
 
 void RawBuffer::Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const

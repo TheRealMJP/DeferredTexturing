@@ -304,16 +304,15 @@ void BindlessDeferred::Initialize()
     }
 
     {
-        // Spot light and shadow bounds buffer (actually used as a constant buffer)
-        StructuredBufferInit sbInit;
-        sbInit.Stride = sizeof(LightConstants);
-        sbInit.NumElements = 1;
-        sbInit.Dynamic = true;
-        sbInit.GPUWritable = true;
-        sbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
+        // Spot light and shadow bounds buffer
+        ConstantBufferInit cbInit;
+        cbInit.Size = sizeof(LightConstants);
+        cbInit.Dynamic = true;
+        cbInit.GPUWritable = true;
+        cbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
+        cbInit.Name = L"Spot Light Buffer";
 
-        spotLightBuffer.Initialize(sbInit);
-        spotLightBuffer.Resource()->SetName(L"Spot Light Buffer");
+        spotLightBuffer.Initialize(cbInit);
     }
 
     {
@@ -1226,10 +1225,13 @@ void BindlessDeferred::Render(const Timer& timer)
     if(AppSettings::RenderLights)
         meshRenderer.RenderSpotLightShadowMap(cmdList, camera);
 
-    // Update the light constant buffer
-    spotLightBuffer.InternalBuffer.UpdateData(spotLights.Data(), spotLights.MemorySize(), 0, false);
-    spotLightBuffer.InternalBuffer.UpdateData(meshRenderer.SpotLightShadowMatrices(), spotLights.Size() * sizeof(Float4x4),
-                                              sizeof(SpotLight) * AppSettings::MaxSpotLights, true);
+    {
+        // Update the light constant buffer
+        const void* srcData[2] = { spotLights.Data(), meshRenderer.SpotLightShadowMatrices() };
+        uint64 sizes[2] = { spotLights.MemorySize(), spotLights.Size() * sizeof(Float4x4) };
+        uint64 offsets[2] = { 0, sizeof(SpotLight) * AppSettings::MaxSpotLights };
+        spotLightBuffer.MultiUpdateData(srcData, sizes, offsets, ArraySize_(srcData));
+    }
 
     if(AppSettings::RenderMode == RenderModes::ClusteredForward)
         RenderForward();
@@ -1368,7 +1370,7 @@ void BindlessDeferred::UpdateDecals(const Timer& timer)
         intersectsCamera[decalIdx] = box.Intersects(nearClipBox);
     }
 
-    decalBuffer.UpdateData(decals.Data(), decals.Size(), 0, false);
+    decalBuffer.UpdateData(decals.Data(), decals.Size(), 0);
 
     numIntersectingDecals = 0;
     uint32* instanceData = decalInstanceBuffer.Map<uint32>();
@@ -2059,7 +2061,7 @@ void BindlessDeferred::RenderDeferred()
         const SunShadowConstants& sunShadowConstants = meshRenderer.SunShadowConstantData();
         DX12::BindTempConstantBuffer(cmdList, sunShadowConstants, DeferredParams_ShadowCBuffer, CmdListMode::Compute);
 
-        cmdList->SetComputeRootConstantBufferView(DeferredParams_LightCBuffer, spotLightBuffer.InternalBuffer.GPUAddress);
+        spotLightBuffer.SetAsComputeRootParameter(cmdList, DeferredParams_LightCBuffer);
 
         AppSettings::BindCBufferCompute(cmdList, DeferredParams_AppSettings);
 

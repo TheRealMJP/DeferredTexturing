@@ -485,7 +485,7 @@ void MeshRenderer::RenderMainPass(ID3D12GraphicsCommandList* cmdList, const Came
 
     DX12::BindTempConstantBuffer(cmdList, sunShadowConstants, MainPass_ShadowCBuffer, CmdListMode::Graphics);
 
-    cmdList->SetGraphicsRootConstantBufferView(MainPass_LightCBuffer, mainPassData.SpotLightBuffer->InternalBuffer.GPUAddress);
+    mainPassData.SpotLightBuffer->SetAsGfxRootParameter(cmdList, MainPass_LightCBuffer);
 
     AppSettings::BindCBufferGfx(cmdList, MainPass_AppSettings);
 
