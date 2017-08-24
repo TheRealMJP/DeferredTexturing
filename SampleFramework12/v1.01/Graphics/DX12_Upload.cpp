@@ -85,7 +85,7 @@ static const uint64 TempBufferSize = 2 * 1024 * 1024;
 static ID3D12Resource* TempFrameBuffers[RenderLatency] = { };
 static uint8* TempFrameCPUMem[RenderLatency] = { };
 static uint64 TempFrameGPUMem[RenderLatency] = { };
-static uint64 TempFrameUsed = 0;
+static volatile int64 TempFrameUsed = 0;
 
 static void ClearFinishedUploads(uint64 flushCount)
 {
@@ -409,16 +409,17 @@ void ResourceUploadEnd(UploadContext& context)
 
 MapResult AcquireTempBufferMem(uint64 size, uint64 alignment)
 {
-    TempFrameUsed = AlignTo(TempFrameUsed, alignment);
-    Assert_(TempFrameUsed + size <= TempBufferSize);
+    uint64 allocSize = size + alignment;
+    uint64 offset = InterlockedAdd64(&TempFrameUsed, allocSize) - allocSize;
+    if(alignment > 0)
+        offset = AlignTo(offset, alignment);
+    Assert_(offset + size <= TempBufferSize);
 
     MapResult result;
-    result.CPUAddress = TempFrameCPUMem[CurrFrameIdx] + TempFrameUsed;
-    result.GPUAddress = TempFrameGPUMem[CurrFrameIdx] + TempFrameUsed;
-    result.ResourceOffset = TempFrameUsed;
+    result.CPUAddress = TempFrameCPUMem[CurrFrameIdx] + offset;
+    result.GPUAddress = TempFrameGPUMem[CurrFrameIdx] + offset;
+    result.ResourceOffset = offset;
     result.Resource = TempFrameBuffers[CurrFrameIdx];
-
-    TempFrameUsed += size;
 
     return result;
 }
