@@ -273,7 +273,7 @@ void BindlessDeferred::Initialize()
         sbInit.Stride = sizeof(Decal);
         sbInit.NumElements = AppSettings::MaxDecals;
         sbInit.Dynamic = true;
-        sbInit.GPUWritable = true;
+        sbInit.CPUAccessible = false;
         sbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
         decalBuffer.Initialize(sbInit);
         decalBuffer.Resource()->SetName(L"Decal Buffer");
@@ -285,7 +285,7 @@ void BindlessDeferred::Initialize()
         sbInit.Stride = sizeof(ClusterBounds);
         sbInit.NumElements = AppSettings::MaxDecals;
         sbInit.Dynamic = true;
-        sbInit.GPUWritable = false;
+        sbInit.CPUAccessible = true;
         decalBoundsBuffer.Initialize(sbInit);
 
         sbInit.Stride = sizeof(uint32);
@@ -298,7 +298,7 @@ void BindlessDeferred::Initialize()
         sbInit.Stride = sizeof(ClusterBounds);
         sbInit.NumElements = AppSettings::MaxSpotLights;
         sbInit.Dynamic = true;
-        sbInit.GPUWritable = false;
+        sbInit.CPUAccessible = true;
         spotLightBoundsBuffer.Initialize(sbInit);
 
         sbInit.Stride = sizeof(uint32);
@@ -310,7 +310,7 @@ void BindlessDeferred::Initialize()
         ConstantBufferInit cbInit;
         cbInit.Size = sizeof(LightConstants);
         cbInit.Dynamic = true;
-        cbInit.GPUWritable = true;
+        cbInit.CPUAccessible = false;
         cbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
         cbInit.Name = L"Spot Light Buffer";
 

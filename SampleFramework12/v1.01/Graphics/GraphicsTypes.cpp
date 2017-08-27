@@ -227,7 +227,7 @@ Buffer::~Buffer()
     Assert_(Resource == nullptr);
 }
 
-void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 gpuWritable,
+void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 cpuAccessible,
                         bool32 allowUAV, const void* initData, D3D12_RESOURCE_STATES initialState,
                         ID3D12Heap* heap, uint64 heapOffset, const wchar* name)
 {
@@ -237,7 +237,7 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 gp
     Size = AlignTo(size, alignment);
     Alignment = alignment;
     Dynamic = dynamic;
-    GPUWritable = gpuWritable;
+    CPUAccessible = cpuAccessible;
     CurrBuffer = 0;
     CPUAddress = nullptr;
     GPUAddress = 0;
@@ -245,8 +245,7 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 gp
     HeapOffset = 0;
 
     Assert_(allowUAV == false || dynamic == false);
-    Assert_(allowUAV == false || gpuWritable);
-    Assert_(dynamic || gpuWritable);
+    Assert_(dynamic || cpuAccessible == false);
 
     D3D12_RESOURCE_DESC resourceDesc = { };
     resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -261,9 +260,9 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 gp
     resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     resourceDesc.Alignment = 0;
 
-    const D3D12_HEAP_PROPERTIES* heapProps = gpuWritable ? DX12::GetDefaultHeapProps() : DX12::GetUploadHeapProps() ;
+    const D3D12_HEAP_PROPERTIES* heapProps = cpuAccessible ? DX12::GetUploadHeapProps() : DX12::GetDefaultHeapProps();
     D3D12_RESOURCE_STATES resourceState = initialState;
-    if(gpuWritable == false)
+    if(cpuAccessible)
         resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
     else if(initData)
         resourceState = D3D12_RESOURCE_STATE_COMMON;
@@ -286,13 +285,13 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 gp
 
     GPUAddress = Resource->GetGPUVirtualAddress();
 
-    if(gpuWritable == false)
+    if(cpuAccessible)
     {
         D3D12_RANGE readRange = { };
         DXCall(Resource->Map(0, &readRange, reinterpret_cast<void**>(&CPUAddress)));
     }
 
-    if(initData && gpuWritable == false)
+    if(initData && cpuAccessible)
     {
         for(uint64 i = 0; i < DX12::RenderLatency; ++i)
         {
@@ -324,7 +323,7 @@ MapResult Buffer::Map()
 {
     Assert_(Initialized());
     Assert_(Dynamic);
-    Assert_(GPUWritable == false);
+    Assert_(CPUAccessible);
 
     // Make sure that we do this at most once per-frame
     Assert_(UploadFrame != DX12::CurrentCPUFrame);
@@ -356,7 +355,8 @@ uint64 Buffer::UpdateData(const void* srcData, uint64 srcSize, uint64 dstOffset)
 
 uint64 Buffer::MultiUpdateData(const void* srcData[], uint64 srcSize[], uint64 dstOffset[], uint64 numUpdates)
 {
-    Assert_(GPUWritable && Dynamic);
+    Assert_(Dynamic);
+    Assert_(CPUAccessible == false);
     Assert_(numUpdates > 0);
 
     // Make sure that we do this at most once per-frame
@@ -439,7 +439,7 @@ ConstantBuffer::~ConstantBuffer()
 
 void ConstantBuffer::Initialize(const ConstantBufferInit& init)
 {
-    InternalBuffer.Initialize(init.Size, DX12::ConstantBufferAlignment, init.Dynamic, init.GPUWritable,
+    InternalBuffer.Initialize(init.Size, DX12::ConstantBufferAlignment, init.Dynamic, init.CPUAccessible,
                               false, init.InitData, init.InitialState, init.Heap, init.HeapOffset, init.Name);
 }
 
@@ -505,7 +505,7 @@ void StructuredBuffer::Initialize(const StructuredBufferInit& init)
     Stride = init.Stride;
     NumElements = init.NumElements;
 
-    InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.GPUWritable, init.CreateUAV,
+    InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.CPUAccessible, init.CreateUAV,
                               init.InitData, init.InitialState, init.Heap, init.HeapOffset, init.Name);
     GPUAddress = InternalBuffer.GPUAddress;
 
@@ -694,7 +694,7 @@ void FormattedBuffer::Initialize(const FormattedBufferInit& init)
     NumElements = init.NumElements;
     Format = init.Format;
 
-    InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.GPUWritable, init.CreateUAV,
+    InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.CPUAccessible, init.CreateUAV,
                               init.InitData, init.InitialState, init.Heap, init.HeapOffset, init.Name);
     GPUAddress = InternalBuffer.GPUAddress;
 
@@ -838,7 +838,7 @@ void RawBuffer::Initialize(const RawBufferInit& init)
     Assert_(init.NumElements > 0);
     NumElements = init.NumElements;
 
-    InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.GPUWritable, init.CreateUAV, init.InitData,
+    InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.CPUAccessible, init.CreateUAV, init.InitData,
                               init.InitialState, init.Heap, init.HeapOffset, init.Name);
     GPUAddress = InternalBuffer.GPUAddress;
 

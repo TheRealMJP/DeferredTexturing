@@ -87,7 +87,7 @@ struct Buffer
     uint64 Alignment = 0;
     uint64 Size = 0;
     bool32 Dynamic = false;
-    bool32 GPUWritable = false;
+    bool32 CPUAccessible = false;
     ID3D12Heap* Heap = nullptr;
     uint64 HeapOffset = 0;
     uint64 UploadFrame = uint64(-1);
@@ -95,7 +95,7 @@ struct Buffer
     Buffer();
     ~Buffer();
 
-    void Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 gpuWritable,
+    void Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 cpuAccessible,
                     bool32 allowUAV, const void* initData, D3D12_RESOURCE_STATES initialState,
                     ID3D12Heap* heap, uint64 heapOffset, const wchar* name);
     void Shutdown();
@@ -130,7 +130,7 @@ struct ConstantBufferInit
 {
     uint64 Size = 0;
     bool32 Dynamic = true;
-    bool32 GPUWritable = false;
+    bool32 CPUAccessible = true;
     const void* InitData = nullptr;
     D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
     ID3D12Heap* Heap = nullptr;
@@ -167,7 +167,7 @@ struct StructuredBufferInit
     bool32 CreateUAV = false;
     bool32 UseCounter = false;
     bool32 Dynamic = false;
-    bool32 GPUWritable = true;
+    bool32 CPUAccessible = false;
     const void* InitData = nullptr;
     D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_GENERIC_READ;
     ID3D12Heap* Heap = nullptr;
@@ -220,7 +220,7 @@ struct FormattedBufferInit
     uint64 NumElements = 0;
     bool32 CreateUAV = false;
     bool32 Dynamic = false;
-    bool32 GPUWritable = true;
+    bool32 CPUAccessible = false;
     const void* InitData = nullptr;
     D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_GENERIC_READ;
     ID3D12Heap* Heap = nullptr;
@@ -271,7 +271,7 @@ struct RawBufferInit
     uint64 NumElements = 0;
     bool32 CreateUAV = false;
     bool32 Dynamic = false;
-    bool32 GPUWritable = true;
+    bool32 CPUAccessible = false;
     const void* InitData = nullptr;
     D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_GENERIC_READ;
     ID3D12Heap* Heap = nullptr;
