@@ -379,6 +379,18 @@ private:
     Texture(const Texture& other) { }
 };
 
+struct RenderTextureInit
+{
+    uint64 Width = 0;
+    uint64 Height = 0;
+    DXGI_FORMAT Format = DXGI_FORMAT_UNKNOWN;
+    uint64 MSAASamples = 1;
+    uint64 ArraySize = 1;
+    bool32 CreateUAV = false;
+    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    const wchar* Name = nullptr;
+};
+
 struct RenderTexture
 {
     Texture Texture;
@@ -391,8 +403,7 @@ struct RenderTexture
     RenderTexture();
     ~RenderTexture();
 
-    void Initialize(uint64 width, uint64 height, DXGI_FORMAT format, uint64 msaaSamples = 1, uint64 arraySize = 1,
-                    bool32 createUAV = false, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    void Initialize(const RenderTextureInit& init);
     void Shutdown();
 
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, uint64 mipLevel = uint64(-1), uint64 arraySlice = uint64(-1)) const;
@@ -411,6 +422,16 @@ private:
     RenderTexture(const RenderTexture& other) { }
 };
 
+struct VolumeTextureInit
+{
+    uint64 Width = 0;
+    uint64 Height = 0;
+    uint64 Depth = 0;
+    DXGI_FORMAT Format = DXGI_FORMAT_UNKNOWN;
+    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    const wchar* Name = nullptr;
+};
+
 struct VolumeTexture
 {
     Texture Texture;
@@ -419,7 +440,7 @@ struct VolumeTexture
     VolumeTexture();
     ~VolumeTexture();
 
-    void Initialize(uint64 width, uint64 height, uint64 depth, DXGI_FORMAT format, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_GENERIC_READ);
+    void Initialize(const VolumeTextureInit& init);
     void Shutdown();
 
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const;
@@ -438,6 +459,17 @@ private:
     VolumeTexture(const RenderTexture& other) { }
 };
 
+struct DepthBufferInit
+{
+    uint64 Width = 0;
+    uint64 Height = 0;
+    DXGI_FORMAT Format = DXGI_FORMAT_UNKNOWN;
+    uint64 MSAASamples = 1;
+    uint64 ArraySize = 1;
+    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+    const wchar* Name = nullptr;
+};
+
 struct DepthBuffer
 {
     Texture Texture;
@@ -451,8 +483,7 @@ struct DepthBuffer
     DepthBuffer();
     ~DepthBuffer();
 
-    void Initialize(uint64 width, uint64 height, DXGI_FORMAT format, uint64 msaaSamples = 1, uint64 arraySize = 1,
-                    D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    void Initialize(const DepthBufferInit& init);
     void Shutdown();
 
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, uint64 arraySlice = uint64(-1)) const;

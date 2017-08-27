@@ -1080,69 +1080,72 @@ RenderTexture::~RenderTexture()
     Assert_(RTV.ptr == 0);
 }
 
-void RenderTexture::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, uint64 msaaSamples, uint64 arraySize, bool32 createUAV, D3D12_RESOURCE_STATES initialState)
+void RenderTexture::Initialize(const RenderTextureInit& init)
 {
     Shutdown();
 
-    Assert_(width > 0);
-    Assert_(height > 0);
-    Assert_(msaaSamples > 0);
+    Assert_(init.Width > 0);
+    Assert_(init.Height > 0);
+    Assert_(init.MSAASamples > 0);
 
     D3D12_RESOURCE_DESC textureDesc = { };
     textureDesc.MipLevels = 1;
-    textureDesc.Format = format;
-    textureDesc.Width = uint32(width);
-    textureDesc.Height = uint32(height);
+    textureDesc.Format = init.Format;
+    textureDesc.Width = uint32(init.Width);
+    textureDesc.Height = uint32(init.Height);
     textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-    if(createUAV)
+    if(init.CreateUAV)
         textureDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-    if(msaaSamples == 1)
+    if(init.MSAASamples == 1)
         textureDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
-    textureDesc.DepthOrArraySize = uint16(arraySize);
-    textureDesc.SampleDesc.Count = uint32(msaaSamples);
-    textureDesc.SampleDesc.Quality = msaaSamples > 1 ? DX12::StandardMSAAPattern : 0;
+    textureDesc.DepthOrArraySize = uint16(init.ArraySize);
+    textureDesc.SampleDesc.Count = uint32(init.MSAASamples);
+    textureDesc.SampleDesc.Quality = init.MSAASamples > 1 ? DX12::StandardMSAAPattern : 0;
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     textureDesc.Alignment = 0;
 
     D3D12_CLEAR_VALUE clearValue = { };
-    clearValue.Format = format;
+    clearValue.Format = init.Format;
     DXCall(DX12::Device->CreateCommittedResource(DX12::GetDefaultHeapProps(), D3D12_HEAP_FLAG_NONE, &textureDesc,
-                                                 initialState, &clearValue, IID_PPV_ARGS(&Texture.Resource)));
+                                                 init.InitialState, &clearValue, IID_PPV_ARGS(&Texture.Resource)));
+
+    if(init.Name != nullptr)
+        Texture.Resource->SetName(init.Name);
 
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
     Texture.SRV = srvAlloc.Index;
     for(uint32 i = 0; i < DX12::SRVDescriptorHeap.NumHeaps; ++i)
         DX12::Device->CreateShaderResourceView(Texture.Resource, nullptr, srvAlloc.Handles[i]);
 
-    Texture.Width = uint32(width);
-    Texture.Height = uint32(height);
+    Texture.Width = uint32(init.Width);
+    Texture.Height = uint32(init.Height);
     Texture.Depth = 1;
     Texture.NumMips = 1;
-    Texture.ArraySize = uint32(arraySize);
-    Texture.Format = format;
+    Texture.ArraySize = uint32(init.ArraySize);
+    Texture.Format = init.Format;
     Texture.Cubemap = false;
-    MSAASamples = uint32(msaaSamples);
+    MSAASamples = uint32(init.MSAASamples);
     MSAAQuality = uint32(textureDesc.SampleDesc.Quality);
 
     RTV = DX12::RTVDescriptorHeap.AllocatePersistent().Handles[0];
     DX12::Device->CreateRenderTargetView(Texture.Resource, nullptr, RTV);
 
-    if(arraySize > 1)
+    if(init.ArraySize > 1)
     {
-        ArrayRTVs.Init(arraySize);
+        ArrayRTVs.Init(init.ArraySize);
 
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = { };
         rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
-        rtvDesc.Format = format;
-        if(msaaSamples > 1)
+        rtvDesc.Format = init.Format;
+        if(init.MSAASamples > 1)
             rtvDesc.Texture2DMSArray.ArraySize = 1;
         else
             rtvDesc.Texture2DArray.ArraySize = 1;
 
-        for(uint64 i = 0; i < arraySize; ++i)
+        for(uint64 i = 0; i < init.ArraySize; ++i)
         {
-            if(msaaSamples > 1)
+            if(init.MSAASamples > 1)
                 rtvDesc.Texture2DMSArray.FirstArraySlice = uint32(i);
             else
                 rtvDesc.Texture2DArray.FirstArraySlice = uint32(i);
@@ -1152,7 +1155,7 @@ void RenderTexture::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, 
         }
     }
 
-    if(createUAV)
+    if(init.CreateUAV)
     {
         UAV = DX12::UAVDescriptorHeap.AllocatePersistent().Handles[0];
         DX12::Device->CreateUnorderedAccessView(Texture.Resource, nullptr, nullptr, UAV);
@@ -1204,22 +1207,22 @@ VolumeTexture::~VolumeTexture()
     Assert_(UAV.ptr == 0);
 }
 
-void VolumeTexture::Initialize(uint64 width, uint64 height, uint64 depth, DXGI_FORMAT format, D3D12_RESOURCE_STATES initialState)
+void VolumeTexture::Initialize(const VolumeTextureInit& init)
 {
     Shutdown();
 
-    Assert_(width > 0);
-    Assert_(height > 0);
-    Assert_(depth > 0);
+    Assert_(init.Width > 0);
+    Assert_(init.Height > 0);
+    Assert_(init.Depth > 0);
 
     D3D12_RESOURCE_DESC textureDesc = { };
     textureDesc.MipLevels = 1;
-    textureDesc.Format = format;
-    textureDesc.Width = uint32(width);
-    textureDesc.Height = uint32(height);
+    textureDesc.Format = init.Format;
+    textureDesc.Width = uint32(init.Width);
+    textureDesc.Height = uint32(init.Height);
     textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     textureDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
-    textureDesc.DepthOrArraySize = uint16(depth);
+    textureDesc.DepthOrArraySize = uint16(init.Depth);
     textureDesc.SampleDesc.Count = 1;
     textureDesc.SampleDesc.Quality = 0;
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
@@ -1227,19 +1230,22 @@ void VolumeTexture::Initialize(uint64 width, uint64 height, uint64 depth, DXGI_F
     textureDesc.Alignment = 0;
 
     DXCall(DX12::Device->CreateCommittedResource(DX12::GetDefaultHeapProps(), D3D12_HEAP_FLAG_NONE, &textureDesc,
-                                                 initialState, nullptr, IID_PPV_ARGS(&Texture.Resource)));
+                                                 init.InitialState, nullptr, IID_PPV_ARGS(&Texture.Resource)));
+
+    if(init.Name != nullptr)
+        Texture.Resource->SetName(init.Name);
 
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
     Texture.SRV = srvAlloc.Index;
     for(uint32 i = 0; i < DX12::SRVDescriptorHeap.NumHeaps; ++i)
         DX12::Device->CreateShaderResourceView(Texture.Resource, nullptr, srvAlloc.Handles[i]);
 
-    Texture.Width = uint32(width);
-    Texture.Height = uint32(height);
-    Texture.Depth = uint32(depth);
+    Texture.Width = uint32(init.Width);
+    Texture.Height = uint32(init.Height);
+    Texture.Depth = uint32(init.Depth);
     Texture.NumMips = 1;
     Texture.ArraySize = 1;
-    Texture.Format = format;
+    Texture.Format = init.Format;
     Texture.Cubemap = false;
 
     UAV = DX12::UAVDescriptorHeap.AllocatePersistent().Handles[0];
@@ -1282,32 +1288,32 @@ DepthBuffer::~DepthBuffer()
     Shutdown();
 }
 
-void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, uint64 msaaSamples, uint64 arraySize, D3D12_RESOURCE_STATES initialState)
+void DepthBuffer::Initialize(const DepthBufferInit& init)
 {
     Shutdown();
 
-    Assert_(width > 0);
-    Assert_(height > 0);
-    Assert_(msaaSamples > 0);
+    Assert_(init.Width > 0);
+    Assert_(init.Height > 0);
+    Assert_(init.MSAASamples > 0);
 
-    DXGI_FORMAT texFormat = format;
-    DXGI_FORMAT srvFormat = format;
-    if(format == DXGI_FORMAT_D16_UNORM)
+    DXGI_FORMAT texFormat = init.Format;
+    DXGI_FORMAT srvFormat = init.Format;
+    if(init.Format == DXGI_FORMAT_D16_UNORM)
     {
         texFormat = DXGI_FORMAT_R16_TYPELESS;
         srvFormat = DXGI_FORMAT_R16_UNORM;
     }
-    else if(format == DXGI_FORMAT_D24_UNORM_S8_UINT)
+    else if(init.Format == DXGI_FORMAT_D24_UNORM_S8_UINT)
     {
         texFormat = DXGI_FORMAT_R24G8_TYPELESS;
         srvFormat = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
     }
-    else if(format == DXGI_FORMAT_D32_FLOAT)
+    else if(init.Format == DXGI_FORMAT_D32_FLOAT)
     {
         texFormat = DXGI_FORMAT_R32_TYPELESS;
         srvFormat = DXGI_FORMAT_R32_FLOAT;
     }
-    else if(format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT)
+    else if(init.Format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT)
     {
         texFormat = DXGI_FORMAT_R32G8X24_TYPELESS;
         srvFormat = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
@@ -1320,12 +1326,12 @@ void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, ui
     D3D12_RESOURCE_DESC textureDesc = { };
     textureDesc.MipLevels = 1;
     textureDesc.Format = texFormat;
-    textureDesc.Width = uint32(width);
-    textureDesc.Height = uint32(height);
+    textureDesc.Width = uint32(init.Width);
+    textureDesc.Height = uint32(init.Height);
     textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-    textureDesc.DepthOrArraySize = uint16(arraySize);
-    textureDesc.SampleDesc.Count = uint32(msaaSamples);
-    textureDesc.SampleDesc.Quality = msaaSamples > 1 ? DX12::StandardMSAAPattern : 0;
+    textureDesc.DepthOrArraySize = uint16(init.ArraySize);
+    textureDesc.SampleDesc.Count = uint32(init.MSAASamples);
+    textureDesc.SampleDesc.Quality = init.MSAASamples> 1 ? DX12::StandardMSAAPattern : 0;
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     textureDesc.Alignment = 0;
@@ -1333,10 +1339,13 @@ void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, ui
     D3D12_CLEAR_VALUE clearValue = { };
     clearValue.DepthStencil.Depth = 1.0f;
     clearValue.DepthStencil.Stencil = 0;
-    clearValue.Format = format;
+    clearValue.Format = init.Format;
 
     DXCall(DX12::Device->CreateCommittedResource(DX12::GetDefaultHeapProps(), D3D12_HEAP_FLAG_NONE, &textureDesc,
-                                                 initialState, &clearValue, IID_PPV_ARGS(&Texture.Resource)));
+                                                 init.InitialState, &clearValue, IID_PPV_ARGS(&Texture.Resource)));
+
+    if(init.Name != nullptr)
+        Texture.Resource->SetName(init.Name);
 
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
     Texture.SRV = srvAlloc.Index;
@@ -1344,7 +1353,7 @@ void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, ui
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = { };
     srvDesc.Format = srvFormat;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    if(msaaSamples == 1 && arraySize == 1)
+    if(init.MSAASamples == 1 && init.ArraySize == 1)
     {
         srvDesc.Texture2D.MipLevels = 1;
         srvDesc.Texture2D.MostDetailedMip = 0;
@@ -1352,9 +1361,9 @@ void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, ui
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     }
-    else if(msaaSamples == 1 && arraySize > 1)
+    else if(init.MSAASamples == 1 && init.ArraySize > 1)
     {
-        srvDesc.Texture2DArray.ArraySize = uint32(arraySize);
+        srvDesc.Texture2DArray.ArraySize = uint32(init.ArraySize);
         srvDesc.Texture2DArray.FirstArraySlice = 0;
         srvDesc.Texture2DArray.MipLevels = 1;
         srvDesc.Texture2DArray.MostDetailedMip = 0;
@@ -1362,62 +1371,62 @@ void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, ui
         srvDesc.Texture2DArray.ResourceMinLODClamp = 0.0f;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
     }
-    else if(msaaSamples > 1 && arraySize == 1)
+    else if(init.MSAASamples > 1 && init.ArraySize == 1)
     {
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMS;
     }
-    else if(msaaSamples > 1 && arraySize > 1)
+    else if(init.MSAASamples > 1 && init.ArraySize > 1)
     {
         srvDesc.Texture2DMSArray.FirstArraySlice = 0;
-        srvDesc.Texture2DMSArray.ArraySize = uint32(arraySize);
+        srvDesc.Texture2DMSArray.ArraySize = uint32(init.ArraySize);
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMSARRAY;
     }
 
     for(uint32 i = 0; i < DX12::SRVDescriptorHeap.NumHeaps; ++i)
         DX12::Device->CreateShaderResourceView(Texture.Resource, &srvDesc, srvAlloc.Handles[i]);
 
-    Texture.Width = uint32(width);
-    Texture.Height = uint32(height);
+    Texture.Width = uint32(init.Width);
+    Texture.Height = uint32(init.Height);
     Texture.Depth = 1;
     Texture.NumMips = 1;
-    Texture.ArraySize = uint32(arraySize);
+    Texture.ArraySize = uint32(init.ArraySize);
     Texture.Format = srvFormat;
     Texture.Cubemap = false;
-    MSAASamples = uint32(msaaSamples);
+    MSAASamples = uint32(init.MSAASamples);
     MSAAQuality = uint32(textureDesc.SampleDesc.Quality);
 
     DSV = DX12::DSVDescriptorHeap.AllocatePersistent().Handles[0];
 
     D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = { };
     dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-    dsvDesc.Format = format;
+    dsvDesc.Format = init.Format;
 
-    if(msaaSamples == 1 && arraySize == 1)
+    if(init.MSAASamples == 1 && init.ArraySize == 1)
     {
         dsvDesc.Texture2D.MipSlice = 0;
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
     }
-    else if(msaaSamples == 1 && arraySize > 1)
+    else if(init.MSAASamples == 1 && init.ArraySize > 1)
     {
-        dsvDesc.Texture2DArray.ArraySize = uint32(arraySize);
+        dsvDesc.Texture2DArray.ArraySize = uint32(init.ArraySize);
         dsvDesc.Texture2DArray.FirstArraySlice = 0;
         dsvDesc.Texture2DArray.MipSlice = 0;
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
     }
-    else if(msaaSamples > 1 && arraySize == 1)
+    else if(init.MSAASamples > 1 && init.ArraySize == 1)
     {
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
     }
-    else if(msaaSamples > 1 && arraySize > 1)
+    else if(init.MSAASamples > 1 && init.ArraySize > 1)
     {
-        dsvDesc.Texture2DMSArray.ArraySize = uint32(arraySize);
+        dsvDesc.Texture2DMSArray.ArraySize = uint32(init.ArraySize);
         dsvDesc.Texture2DMSArray.FirstArraySlice = 0;
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMSARRAY;
     }
 
     DX12::Device->CreateDepthStencilView(Texture.Resource, &dsvDesc, DSV);
 
-    bool hasStencil = format == DXGI_FORMAT_D24_UNORM_S8_UINT || format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+    bool hasStencil = init.Format == DXGI_FORMAT_D24_UNORM_S8_UINT || init.Format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
 
     ReadOnlyDSV = DX12::DSVDescriptorHeap.AllocatePersistent().Handles[0];
     dsvDesc.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
@@ -1425,19 +1434,19 @@ void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, ui
         dsvDesc.Flags |= D3D12_DSV_FLAG_READ_ONLY_STENCIL;
     DX12::Device->CreateDepthStencilView(Texture.Resource, &dsvDesc, ReadOnlyDSV);
 
-    if(arraySize > 1)
+    if(init.ArraySize > 1)
     {
-        ArrayDSVs.Init(arraySize);
+        ArrayDSVs.Init(init.ArraySize);
 
         dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-        if(msaaSamples > 1)
+        if(init.MSAASamples > 1)
             dsvDesc.Texture2DMSArray.ArraySize = 1;
         else
             dsvDesc.Texture2DArray.ArraySize = 1;
 
-        for(uint64 i = 0; i < arraySize; ++i)
+        for(uint64 i = 0; i < init.ArraySize; ++i)
         {
-            if(msaaSamples > 1)
+            if(init.MSAASamples > 1)
                 dsvDesc.Texture2DMSArray.FirstArraySlice = uint32(i);
             else
                 dsvDesc.Texture2DArray.FirstArraySlice = uint32(i);
@@ -1447,7 +1456,7 @@ void DepthBuffer::Initialize(uint64 width, uint64 height, DXGI_FORMAT format, ui
         }
     }
 
-    DSVFormat = format;
+    DSVFormat = init.Format;
 }
 
 void DepthBuffer::Shutdown()

@@ -126,8 +126,14 @@ TempRenderTarget* PostProcessHelper::GetTempRenderTarget(uint64 width, uint64 he
         }
     }
 
-    TempRenderTarget* tempRT = new TempRenderTarget();
-    tempRT->RT.Initialize(width, height, format, 1, 1, useAsUAV);
+    RenderTextureInit rtInit;
+    rtInit.Width = width;
+    rtInit.Height = height;
+    rtInit.Format = format;
+    rtInit.CreateUAV = useAsUAV;
+
+    TempRenderTarget* tempRT = new TempRenderTarget();    
+    tempRT->RT.Initialize(rtInit);
     tempRT->RT.Texture.Resource->SetName(L"PP Temp Render Target");
     tempRT->InUse = true;
     tempRenderTargets.Add(tempRT);

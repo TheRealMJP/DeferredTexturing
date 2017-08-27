@@ -175,12 +175,29 @@ void MeshRenderer::Initialize(const Model* model_)
 
     LoadShaders();
 
-    sunShadowMap.Initialize(SunShadowMapSize, SunShadowMapSize, DXGI_FORMAT_D32_FLOAT, 1, NumCascades, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-    sunShadowMap.Resource()->SetName(L"Sun Shadow Map");
+    {
+        DepthBufferInit dbInit;
+        dbInit.Width = SunShadowMapSize;
+        dbInit.Height = SunShadowMapSize;
+        dbInit.Format = DXGI_FORMAT_D32_FLOAT;
+        dbInit.MSAASamples = 1;
+        dbInit.ArraySize = NumCascades;
+        dbInit.InitialState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        dbInit.Name = L"Sun Shadow Map";
+        sunShadowMap.Initialize(dbInit);
+    }
 
-    const uint64 numSpotLights = model->SpotLights().Size();
-    spotLightShadowMap.Initialize(SpotLightShadowMapSize, SpotLightShadowMapSize, DXGI_FORMAT_D24_UNORM_S8_UINT, 1, numSpotLights, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-    spotLightShadowMap.Resource()->SetName(L"Sun Shadow Map");
+    {
+        DepthBufferInit dbInit;
+        dbInit.Width = SpotLightShadowMapSize;
+        dbInit.Height = SpotLightShadowMapSize;
+        dbInit.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        dbInit.MSAASamples = 1;
+        dbInit.ArraySize = model->SpotLights().Size();
+        dbInit.InitialState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        dbInit.Name = L"Spot Light Shadow Map";
+        spotLightShadowMap.Initialize(dbInit);
+    }
 
     const uint64 numMaterialTextures = model->MaterialTextures().Count();
 

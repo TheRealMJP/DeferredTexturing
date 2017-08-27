@@ -847,45 +847,138 @@ void BindlessDeferred::CreateRenderTargets()
     uint32 height = swapChain.Height();
     const uint32 NumSamples = AppSettings::NumMSAASamples();
 
-    mainTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, NumSamples, 1, NumSamples == 1);
-    mainTarget.Resource()->SetName(L"Main Target");
+    {
+        RenderTextureInit rtInit;
+        rtInit.Width = width;
+        rtInit.Height = height;
+        rtInit.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        rtInit.MSAASamples = NumSamples;
+        rtInit.ArraySize = 1;
+        rtInit.CreateUAV = NumSamples == 1;
+        rtInit.Name = L"Main Target";
+        mainTarget.Initialize(rtInit);
+    }
 
-    tangentFrameTarget.Initialize(width, height, DXGI_FORMAT_R10G10B10A2_UNORM, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    uvTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_SNORM, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    uvGradientsTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_SNORM, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    materialIDTarget.Initialize(width, height, DXGI_FORMAT_R8_UINT, NumSamples, 1, false, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    {
+        RenderTextureInit rtInit;
+        rtInit.Width = width;
+        rtInit.Height = height;
+        rtInit.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
+        rtInit.MSAASamples = NumSamples;
+        rtInit.ArraySize = 1;
+        rtInit.CreateUAV = false;
+        rtInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        rtInit.Name = L"Tangent Frame Target";
+        tangentFrameTarget.Initialize(rtInit);
+    }
 
-    tangentFrameTarget.Resource()->SetName(L"Tangent Frame Target");
-    uvTarget.Resource()->SetName(L"UV Target");
-    uvGradientsTarget.Resource()->SetName(L"UV Gradient Target");
-    materialIDTarget.Resource()->SetName(L"Material ID Target");
+    {
+        RenderTextureInit rtInit;
+        rtInit.Width = width;
+        rtInit.Height = height;
+        rtInit.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+        rtInit.MSAASamples = NumSamples;
+        rtInit.ArraySize = 1;
+        rtInit.CreateUAV = false;
+        rtInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        rtInit.Name = L"UV Target";
+        uvTarget.Initialize(rtInit);
+    }
+
+    {
+        RenderTextureInit rtInit;
+        rtInit.Width = width;
+        rtInit.Height = height;
+        rtInit.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+        rtInit.MSAASamples = NumSamples;
+        rtInit.ArraySize = 1;
+        rtInit.CreateUAV = false;
+        rtInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        rtInit.Name = L"UV Gradient Target";
+        uvGradientsTarget.Initialize(rtInit);
+    }
+
+    {
+        RenderTextureInit rtInit;
+        rtInit.Width = width;
+        rtInit.Height = height;
+        rtInit.Format = DXGI_FORMAT_R8_UINT;
+        rtInit.MSAASamples = NumSamples;
+        rtInit.ArraySize = 1;
+        rtInit.CreateUAV = false;
+        rtInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        rtInit.Name = L"Material ID Target";
+        materialIDTarget.Initialize(rtInit);
+    }
 
     if(NumSamples > 1)
     {
-        resolveTarget.Initialize(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 1, false);
+        {
+            RenderTextureInit rtInit;
+            rtInit.Width = width;
+            rtInit.Height = height;
+            rtInit.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            rtInit.MSAASamples = 1;
+            rtInit.ArraySize = 1;
+            rtInit.CreateUAV = false;
+            rtInit.Name = L"Resolve Target";
+            resolveTarget.Initialize(rtInit);
+        }
 
-        uint32 deferredWidth = width * 2;
-        uint32 deferredHeight = NumSamples == 4 ? height * 2 : height;
-        deferredMSAATarget.Initialize(deferredWidth, deferredHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 1, true);
-        deferredMSAATarget.Resource()->SetName(L"Deferred MSAA Target");
+        {
+            RenderTextureInit rtInit;
+            rtInit.Width = width * 2;
+            rtInit.Height = NumSamples == 4 ? height * 2 : height;
+            rtInit.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            rtInit.MSAASamples = 1;
+            rtInit.ArraySize = 1;
+            rtInit.CreateUAV = true;
+            rtInit.Name = L"Deferred MSAA Target";
+            deferredMSAATarget.Initialize(rtInit);
+        }
     }
 
-    depthBuffer.Initialize(width, height, DXGI_FORMAT_D32_FLOAT, NumSamples, 1, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ);
-    depthBuffer.Resource()->SetName(L"Main Depth Buffer");
+    {
+        DepthBufferInit dbInit;
+        dbInit.Width = width;
+        dbInit.Height = height;
+        dbInit.Format = DXGI_FORMAT_D32_FLOAT;
+        dbInit.MSAASamples = NumSamples;
+        dbInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
+        dbInit.Name = L"Main Depth Buffer";
+        depthBuffer.Initialize(dbInit);
+    }
 
     AppSettings::NumXTiles = (width + (AppSettings::ClusterTileSize - 1)) / AppSettings::ClusterTileSize;
     AppSettings::NumYTiles = (height + (AppSettings::ClusterTileSize - 1)) / AppSettings::ClusterTileSize;
     const uint64 numXYZTiles = AppSettings::NumXTiles * AppSettings::NumYTiles * AppSettings::NumZTiles;
 
-    // Render target for forcing MSAA during cluster rasterization. Ideally we would use ForcedSampleCount for this,
-    // but it's currently causing the Nvidia driver to crash. :(
-    ClusterRasterizationModes rastMode = AppSettings::ClusterRasterizationMode;
-    if(rastMode == ClusterRasterizationModes::MSAA4x)
-        clusterMSAATarget.Initialize(AppSettings::NumXTiles, AppSettings::NumYTiles, DXGI_FORMAT_R8_UNORM, 4, 1, false);
-    else if(rastMode == ClusterRasterizationModes::MSAA8x)
-        clusterMSAATarget.Initialize(AppSettings::NumXTiles, AppSettings::NumYTiles, DXGI_FORMAT_R8_UNORM, 8, 1, false);
-    else
-        clusterMSAATarget.Shutdown();
+    {
+        // Render target for forcing MSAA during cluster rasterization. Ideally we would use ForcedSampleCount for this,
+        // but it's currently causing the Nvidia driver to crash. :(
+        RenderTextureInit rtInit;
+        rtInit.Width = AppSettings::NumXTiles;
+        rtInit.Height = AppSettings::NumYTiles;
+        rtInit.Format = DXGI_FORMAT_R8_UNORM;
+        rtInit.MSAASamples = 1;
+        rtInit.ArraySize = 1;
+        rtInit.CreateUAV = false;
+        rtInit.Name = L"Deferred MSAA Target";
+
+        ClusterRasterizationModes rastMode = AppSettings::ClusterRasterizationMode;
+        if(rastMode == ClusterRasterizationModes::MSAA4x)
+        {
+            rtInit.MSAASamples = 4;
+            clusterMSAATarget.Initialize(rtInit);
+        }
+        else if(rastMode == ClusterRasterizationModes::MSAA8x)
+        {
+            rtInit.MSAASamples = 8;
+            clusterMSAATarget.Initialize(rtInit);
+        }
+        else
+            clusterMSAATarget.Shutdown();
+    }
 
     {
         // Decal cluster bitmask buffer
@@ -1941,7 +2034,7 @@ void BindlessDeferred::RenderDeferred()
         D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { nonMsaaTileBuffer.UAV, msaaTileBuffer.UAV, msaaMaskBuffer.UAV };
         DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), MSAAMaskParams_UAVDescriptors, CmdListMode::Compute);
 
-        AppSettings::BindCBufferGfx(cmdList, MSAAMaskParams_AppSettings);
+        AppSettings::BindCBufferCompute(cmdList, MSAAMaskParams_AppSettings);
 
         cmdList->Dispatch(numComputeTilesX, numComputeTilesY, 1);
 
