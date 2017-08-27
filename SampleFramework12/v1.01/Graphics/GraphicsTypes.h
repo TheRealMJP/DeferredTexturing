@@ -387,7 +387,7 @@ struct RenderTextureInit
     uint64 MSAASamples = 1;
     uint64 ArraySize = 1;
     bool32 CreateUAV = false;
-    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_RENDER_TARGET;
     const wchar* Name = nullptr;
 };
 

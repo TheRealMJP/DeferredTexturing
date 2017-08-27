@@ -8,18 +8,23 @@
 //=================================================================================================
 
 #include <EVSM.hlsl>
+#include <MSM.hlsl>
+
+#define ShadowMapMode_DepthMap_ 0
+#define ShadowMapMode_EVSM_     1
+#define ShadowMapMode_MSM_      2
 
 // Options
 #ifndef UseGatherPCF_
     #define UseGatherPCF_ 0
 #endif
 
-#ifndef UseReceiverPlaneBias_
-    #define UseReceiverPlaneBias_ 1
+#ifndef ShadowMapMode_
+    #define ShadowMapMode_ ShadowMapMode_DepthMap_
 #endif
 
-#ifndef UseSpotTextureArray_
-    #define UseSpotTextureArray_ 0
+#ifndef UseReceiverPlaneBias_
+    #define UseReceiverPlaneBias_ 1
 #endif
 
 //=================================================================================================
@@ -27,61 +32,78 @@
 //=================================================================================================
 static const uint NumCascades = 4;
 
-struct ShadowConstantsEVSM
+struct SunShadowConstants
 {
     row_major float4x4 ShadowMatrix;
     float4 CascadeSplits;
     float4 CascadeOffsets[NumCascades];
     float4 CascadeScales[NumCascades];
+};
 
+struct EVSMConstants
+{
     float PositiveExponent;
     float NegativeExponent;
     float LightBleedingReduction;
 };
 
-struct ShadowConstants
+struct MSMConstants
 {
-    row_major float4x4 ShadowMatrix;
-    float4 CascadeSplits;
-    float4 CascadeOffsets[NumCascades];
-    float4 CascadeScales[NumCascades];
+    float DepthBias;
+    float MomentBias;
+    float LightBleedingReduction;
 };
+
+struct SunShadowConstantsEVSM
+{
+    SunShadowConstants Base;
+    EVSMConstants EVSM;
+};
+
+struct SunShadowConstantsMSM
+{
+    SunShadowConstants Base;
+    MSMConstants MSM;
+};
+
+#if ShadowMapMode_ == ShadowMapMode_DepthMap_
+    typedef uint ExtraShadowConstants;
+    typedef SamplerComparisonState ShadowSampler;
+#elif ShadowMapMode_ == ShadowMapMode_EVSM_
+    typedef EVSMConstants ExtraShadowConstants;
+    typedef SamplerState ShadowSampler;
+#elif ShadowMapMode_ == ShadowMapMode_MSM_
+    typedef MSMConstants ExtraShadowConstants;
+    typedef SamplerState ShadowSampler;
+#endif
 
 //-------------------------------------------------------------------------------------------------
 // Samples the EVSM shadow map
 //-------------------------------------------------------------------------------------------------
-float SampleShadowMapEVSM(in float3 shadowPos, in float3 shadowPosDX,
-                          in float3 shadowPosDY, in uint cascadeIdx,
-                          in Texture2DArray shadowMap, in SamplerState evsmSampler,
-                          in ShadowConstantsEVSM shadowConstants)
+float SampleShadowMapEVSM(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY, in uint shadowMapIdx,
+                          in Texture2DArray shadowMap, in SamplerState evsmSampler, in EVSMConstants evsmConstants, in float3 cascadeScale)
 {
-    float2 exponents = GetEVSMExponents(shadowConstants.PositiveExponent, shadowConstants.NegativeExponent,
-                                        shadowConstants.CascadeScales[cascadeIdx].xyz);
+    float2 exponents = GetEVSMExponents(evsmConstants.PositiveExponent, evsmConstants.NegativeExponent, cascadeScale);
     float2 warpedDepth = WarpDepth(shadowPos.z, exponents);
 
-    float4 occluder = shadowMap.SampleGrad(evsmSampler, float3(shadowPos.xy, cascadeIdx),
-                                            shadowPosDX.xy, shadowPosDY.xy);
+    float4 occluder = shadowMap.SampleGrad(evsmSampler, float3(shadowPos.xy, shadowMapIdx), shadowPosDX.xy, shadowPosDY.xy);
 
     // Derivative of warping at depth
     float2 depthScale = 0.0001f * exponents * warpedDepth;
     float2 minVariance = depthScale * depthScale;
 
-    float posContrib = ChebyshevUpperBound(occluder.xz, warpedDepth.x, minVariance.x, shadowConstants.LightBleedingReduction);
-    float negContrib = ChebyshevUpperBound(occluder.yw, warpedDepth.y, minVariance.y, shadowConstants.LightBleedingReduction);
+    float posContrib = ChebyshevUpperBound(occluder.xz, warpedDepth.x, minVariance.x, evsmConstants.LightBleedingReduction);
+    float negContrib = ChebyshevUpperBound(occluder.yw, warpedDepth.y, minVariance.y, evsmConstants.LightBleedingReduction);
     float shadowContrib = posContrib;
     shadowContrib = min(shadowContrib, negContrib);
 
     return shadowContrib;
 }
 
-//-------------------------------------------------------------------------------------------------
-// Samples the EVSM shadow map
-//-------------------------------------------------------------------------------------------------
-float SampleShadowMapEVSM(in float3 shadowPos, in float3 shadowPosDX,
-                          in float3 shadowPosDY, in Texture2D shadowMap,
-                          in SamplerState evsmSampler, in ShadowConstantsEVSM shadowConstants)
+float SampleShadowMapEVSM(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY, in Texture2D shadowMap,
+                          in SamplerState evsmSampler, in EVSMConstants evsmConstants)
 {
-    float2 exponents = GetEVSMExponents(shadowConstants.PositiveExponent, shadowConstants.NegativeExponent, 1.0f);
+    float2 exponents = GetEVSMExponents(evsmConstants.PositiveExponent, evsmConstants.NegativeExponent, 1.0f);
     float2 warpedDepth = WarpDepth(shadowPos.z, exponents);
 
     float4 occluder = shadowMap.SampleGrad(evsmSampler, shadowPos.xy, shadowPosDX.xy, shadowPosDY.xy);
@@ -90,65 +112,38 @@ float SampleShadowMapEVSM(in float3 shadowPos, in float3 shadowPosDX,
     float2 depthScale = 0.0001f * exponents * warpedDepth;
     float2 minVariance = depthScale * depthScale;
 
-    float posContrib = ChebyshevUpperBound(occluder.xz, warpedDepth.x, minVariance.x, shadowConstants.LightBleedingReduction);
-    float negContrib = ChebyshevUpperBound(occluder.yw, warpedDepth.y, minVariance.y, shadowConstants.LightBleedingReduction);
+    float posContrib = ChebyshevUpperBound(occluder.xz, warpedDepth.x, minVariance.x, evsmConstants.LightBleedingReduction);
+    float negContrib = ChebyshevUpperBound(occluder.yw, warpedDepth.y, minVariance.y, evsmConstants.LightBleedingReduction);
     float shadowContrib = posContrib;
     shadowContrib = min(shadowContrib, negContrib);
 
     return shadowContrib;
 }
 
-
 //-------------------------------------------------------------------------------------------------
-// Samples the appropriate shadow map cascade
+// Samples the MSM shadow map
 //-------------------------------------------------------------------------------------------------
-float3 SampleShadowCascadeEVSM(in float3 shadowPosition, in float3 shadowPosDX,
-                               in float3 shadowPosDY, in uint cascadeIdx,
-                               in Texture2DArray sunShadowMap, in SamplerState evsmSampler,
-                               in ShadowConstantsEVSM shadowConstants)
+float SampleShadowMapMSM(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY, in uint shadowMapIdx,
+                         in Texture2DArray shadowMap, in SamplerState evsmSampler, in MSMConstants msmConstants)
 {
-    shadowPosition += shadowConstants.CascadeOffsets[cascadeIdx].xyz;
-    shadowPosition *= shadowConstants.CascadeScales[cascadeIdx].xyz;
+    float4 moments = shadowMap.SampleGrad(evsmSampler, float3(shadowPos.xy, shadowMapIdx), shadowPosDX.xy, shadowPosDY.xy);
+    moments = ConvertOptimizedMoments(moments);
+    float result = ComputeMSMHamburger(moments, shadowPos.z, msmConstants.DepthBias, msmConstants.MomentBias);
 
-    shadowPosDX *= shadowConstants.CascadeScales[cascadeIdx].xyz;
-    shadowPosDY *= shadowConstants.CascadeScales[cascadeIdx].xyz;
-
-    float3 cascadeColor = 1.0f;
-
-    float shadow = SampleShadowMapEVSM(shadowPosition, shadowPosDX, shadowPosDY, cascadeIdx, sunShadowMap, evsmSampler, shadowConstants);
-
-    return shadow * cascadeColor;
+    return ReduceLightBleeding(result, msmConstants.LightBleedingReduction);
 }
 
-//--------------------------------------------------------------------------------------
-// Computes the sun visibility term by performing the shadow test
-//--------------------------------------------------------------------------------------
-float3 SunShadowVisibilityEVSM(in float3 positionWS, in float depthVS,
-                               in Texture2DArray sunShadowMap, in SamplerState evsmSampler,
-                               in ShadowConstantsEVSM shadowConstants)
+//-------------------------------------------------------------------------------------------------
+// Samples the MSM shadow map
+//-------------------------------------------------------------------------------------------------
+float SampleShadowMapMSM(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY,
+                         in Texture2D shadowMap, in SamplerState evsmSampler, in MSMConstants msmConstants)
 {
-    float3 shadowVisibility = 1.0f;
-    uint cascadeIdx = 0;
+    float4 moments = shadowMap.SampleGrad(evsmSampler, shadowPos.xy, shadowPosDX.xy, shadowPosDY.xy);
+    moments = ConvertOptimizedMoments(moments);
+    float result = ComputeMSMHamburger(moments, shadowPos.z, msmConstants.DepthBias, msmConstants.MomentBias);
 
-    // Project into shadow space
-    float3 samplePos = positionWS;
-    float3 shadowPosition = mul(float4(samplePos, 1.0f), shadowConstants.ShadowMatrix).xyz;
-    float3 shadowPosDX = ddx(shadowPosition);
-    float3 shadowPosDY = ddy(shadowPosition);
-
-    // Figure out which cascade to sample from
-    [unroll]
-    for(uint i = 0; i < NumCascades - 1; ++i)
-    {
-        [flatten]
-        if(depthVS > shadowConstants.CascadeSplits[i])
-            cascadeIdx = i + 1;
-    }
-
-    shadowVisibility = SampleShadowCascadeEVSM(shadowPosition, shadowPosDX, shadowPosDY,
-                                               cascadeIdx, sunShadowMap, evsmSampler, shadowConstants);
-
-    return shadowVisibility;
+    return ReduceLightBleeding(result, msmConstants.LightBleedingReduction);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -474,8 +469,8 @@ float SampleShadowMapSimplePCF(in float3 shadowPos, in float2 planeBias,
 // Computes the visibility for a directional light using implicit derivatives
 //--------------------------------------------------------------------------------------
 float SunShadows(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY, in float depthVS,
-                 in Texture2DArray sunShadowMap, in SamplerComparisonState shadowSampler,
-                 in ShadowConstants shadowConstants)
+                 in Texture2DArray sunShadowMap, in ShadowSampler shadowSampler,
+                 in SunShadowConstants sunConstants, in ExtraShadowConstants extraConstants)
 {
     // Figure out which cascade to sample from
     uint cascadeIdx = 0;
@@ -484,27 +479,35 @@ float SunShadows(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPos
     for(uint i = 0; i < NumCascades - 1; ++i)
     {
         [flatten]
-        if(depthVS > shadowConstants.CascadeSplits[i])
+        if(depthVS > sunConstants.CascadeSplits[i])
             cascadeIdx = i + 1;
     }
 
-    shadowPos += shadowConstants.CascadeOffsets[cascadeIdx].xyz;
-    shadowPos *= shadowConstants.CascadeScales[cascadeIdx].xyz;
+    shadowPos += sunConstants.CascadeOffsets[cascadeIdx].xyz;
+    shadowPos *= sunConstants.CascadeScales[cascadeIdx].xyz;
 
-    shadowPosDX *= shadowConstants.CascadeScales[cascadeIdx].xyz;
-    shadowPosDY *= shadowConstants.CascadeScales[cascadeIdx].xyz;
+    shadowPosDX *= sunConstants.CascadeScales[cascadeIdx].xyz;
+    shadowPosDY *= sunConstants.CascadeScales[cascadeIdx].xyz;
 
-    #if UseReceiverPlaneBias_
-        float2 planeBias = ComputeReceiverPlaneDepthBias(shadowPosDX, shadowPosDY);
-    #else
-        shadowPos.z -= 0.01f;
-        float2 planeBias = 0.0f;
-    #endif
+    #if ShadowMapMode_ == ShadowMapMode_DepthMap_
+        #if UseReceiverPlaneBias_
+            float2 planeBias = ComputeReceiverPlaneDepthBias(shadowPosDX, shadowPosDY);
+        #else
+            shadowPos.z -= 0.01f;
+            float2 planeBias = 0.0f;
+        #endif
 
-    #if UseGatherPCF_
-        return SampleShadowMapGatherPCF(shadowPos, planeBias, cascadeIdx, sunShadowMap, shadowSampler);
-    #else
-        return SampleShadowMapSimplePCF(shadowPos, planeBias, cascadeIdx, sunShadowMap, shadowSampler);
+        #if UseGatherPCF_
+            return SampleShadowMapGatherPCF(shadowPos, planeBias, cascadeIdx, sunShadowMap, shadowSampler);
+        #else
+            return SampleShadowMapSimplePCF(shadowPos, planeBias, cascadeIdx, sunShadowMap, shadowSampler);
+        #endif
+    #elif ShadowMapMode_ == ShadowMapMode_EVSM_
+        return SampleShadowMapEVSM(shadowPos, shadowPosDX, shadowPosDY, cascadeIdx, sunShadowMap,
+                                   shadowSampler, extraConstants, sunConstants.CascadeScales[cascadeIdx].xyz);
+    #elif ShadowMapMode_ == ShadowMapMode_MSM_
+        return SampleShadowMapMSM(shadowPos, shadowPosDX, shadowPosDY, cascadeIdx, sunShadowMap,
+                                  shadowSampler, extraConstants);
     #endif
 }
 
@@ -513,73 +516,99 @@ float SunShadows(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPos
 // Computes the visibility for a directional light using implicit derivatives
 //--------------------------------------------------------------------------------------
 float SunShadowVisibility(in float3 positionWS, in float depthVS,
-                           in Texture2DArray sunShadowMap, in SamplerComparisonState shadowSampler,
-                           in ShadowConstants shadowConstants)
+                          in Texture2DArray sunShadowMap, in ShadowSampler shadowSampler,
+                          in SunShadowConstants sunConstants, in ExtraShadowConstants extraConstants)
 {
     // Project into shadow space
-    float3 shadowPos = mul(float4(positionWS, 1.0f), shadowConstants.ShadowMatrix).xyz;
+    float3 shadowPos = mul(float4(positionWS, 1.0f), sunConstants.ShadowMatrix).xyz;
     float3 shadowPosDX = ddx(shadowPos);
     float3 shadowPosDY = ddy(shadowPos);
 
-    return SunShadows(shadowPos, shadowPosDX, shadowPosDY, depthVS, sunShadowMap, shadowSampler, shadowConstants);
+    return SunShadows(shadowPos, shadowPosDX, shadowPosDY, depthVS, sunShadowMap, shadowSampler, sunConstants, extraConstants);
 }
 
 //--------------------------------------------------------------------------------------
 // Computes the visibility for a directional light using explicit position derivatives
 //--------------------------------------------------------------------------------------
 float SunShadowVisibility(in float3 positionWS, in float3 positionNeighborX, in float3 positionNeighborY, in float depthVS,
-                           in Texture2DArray sunShadowMap, in SamplerComparisonState shadowSampler,
-                           in ShadowConstants shadowConstants)
+                           in Texture2DArray sunShadowMap, in ShadowSampler shadowSampler,
+                           in SunShadowConstants sunConstants, in ExtraShadowConstants extraConstants)
 {
     // Project into shadow space
-    float3 shadowPos = mul(float4(positionWS, 1.0f), shadowConstants.ShadowMatrix).xyz;
-    float3 shadowPosDX = mul(float4(positionNeighborX, 1.0f), shadowConstants.ShadowMatrix).xyz - shadowPos;
-    float3 shadowPosDY = mul(float4(positionNeighborY, 1.0f), shadowConstants.ShadowMatrix).xyz - shadowPos;
+    float3 shadowPos = mul(float4(positionWS, 1.0f), sunConstants.ShadowMatrix).xyz;
+    float3 shadowPosDX = mul(float4(positionNeighborX, 1.0f), sunConstants.ShadowMatrix).xyz - shadowPos;
+    float3 shadowPosDY = mul(float4(positionNeighborY, 1.0f), sunConstants.ShadowMatrix).xyz - shadowPos;
 
-    return SunShadows(shadowPos, shadowPosDX, shadowPosDY, depthVS, sunShadowMap, shadowSampler, shadowConstants);
+    return SunShadows(shadowPos, shadowPosDX, shadowPosDY, depthVS, sunShadowMap, shadowSampler, sunConstants, extraConstants);
 }
 
 //--------------------------------------------------------------------------------------
 // Computes the visibility for a spot light using explicit position derivatives
 //--------------------------------------------------------------------------------------
-float SpotLightShadows(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY,
+float SpotLightShadows(in float4 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY,
                        in float4x4 shadowMatrix, in uint shadowMapIdx,
-                       in Texture2DArray shadowMap, in SamplerComparisonState shadowSampler)
+                       in Texture2DArray shadowMap, in ShadowSampler shadowSampler,
+                       in float2 clipPlanes, in ExtraShadowConstants extraConstants)
 {
-    #if UseReceiverPlaneBias_
-        shadowPos.z -= 0.00001f;
-        float2 planeBias = ComputeReceiverPlaneDepthBias(shadowPosDX, shadowPosDY);
-    #else
-        shadowPos.z -= 0.001f;
-        float2 planeBias = 0.0f;
+    #if ShadowMapMode_ == ShadowMapMode_EVSM_ || ShadowMapMode_ == ShadowMapMode_MSM_
+        shadowPos.z = (shadowPos.w - clipPlanes.x) / (clipPlanes.y - clipPlanes.x);
     #endif
 
-    #if UseGatherPCF_
-        return SampleShadowMapGatherPCF(shadowPos, planeBias, shadowMapIdx, shadowMap, shadowSampler);
-    #else
-        return SampleShadowMapSimplePCF(shadowPos, planeBias, shadowMapIdx, shadowMap, shadowSampler);
+    #if ShadowMapMode_ == ShadowMapMode_DepthMap_
+        #if UseReceiverPlaneBias_
+            shadowPos.z -= 0.00001f;
+            float2 planeBias = ComputeReceiverPlaneDepthBias(shadowPosDX, shadowPosDY);
+        #else
+            shadowPos.z -= 0.001f;
+            float2 planeBias = 0.0f;
+        #endif
+
+        #if UseGatherPCF_
+            return SampleShadowMapGatherPCF(shadowPos.xyz, planeBias, shadowMapIdx, shadowMap, shadowSampler);
+        #else
+            return SampleShadowMapSimplePCF(shadowPos.xyz, planeBias, shadowMapIdx, shadowMap, shadowSampler);
+        #endif
+    #elif ShadowMapMode_ == ShadowMapMode_EVSM_
+        return SampleShadowMapEVSM(shadowPos.xyz, shadowPosDX, shadowPosDY, shadowMapIdx, shadowMap,
+                                   shadowSampler, extraConstants, 1.0f);
+    #elif ShadowMapMode_ == ShadowMapMode_MSM_
+        return SampleShadowMapMSM(shadowPos.xyz, shadowPosDX, shadowPosDY, shadowMapIdx, shadowMap,
+                                  shadowSampler, extraConstants);
     #endif
 }
 
 //--------------------------------------------------------------------------------------
 // Computes the visibility for a spot light using explicit position derivatives
 //--------------------------------------------------------------------------------------
-float SpotLightShadows(in float3 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY,
+float SpotLightShadows(in float4 shadowPos, in float3 shadowPosDX, in float3 shadowPosDY,
                        in float4x4 shadowMatrix, in Texture2D shadowMap,
-                       in SamplerComparisonState shadowSampler)
+                       in ShadowSampler shadowSampler, in float2 clipPlanes,
+                       in ExtraShadowConstants extraConstants)
 {
-    #if UseReceiverPlaneBias_
-        shadowPos.z -= 0.00001f;
-        float2 planeBias = ComputeReceiverPlaneDepthBias(shadowPosDX, shadowPosDY);
-    #else
-        shadowPos.z -= 0.001f;
-        float2 planeBias = 0.0f;
+    #if ShadowMapMode_ == ShadowMapMode_EVSM_ || ShadowMapMode_ == ShadowMapMode_MSM_
+        shadowPos.z = (shadowPos.w - clipPlanes.x) / (clipPlanes.y - clipPlanes.x);
     #endif
 
-    #if UseGatherPCF_
-        return SampleShadowMapGatherPCF(shadowPos, planeBias, shadowMap, shadowSampler);
-    #else
-        return SampleShadowMapSimplePCF(shadowPos, planeBias, shadowMap, shadowSampler);
+    #if ShadowMapMode_ == ShadowMapMode_DepthMap_
+        #if UseReceiverPlaneBias_
+            shadowPos.z -= 0.00001f;
+            float2 planeBias = ComputeReceiverPlaneDepthBias(shadowPosDX, shadowPosDY);
+        #else
+            shadowPos.z -= 0.001f;
+            float2 planeBias = 0.0f;
+        #endif
+
+        #if UseGatherPCF_
+            return SampleShadowMapGatherPCF(shadowPos.xyz, planeBias, shadowMap, shadowSampler);
+        #else
+            return SampleShadowMapSimplePCF(shadowPos.xyz, planeBias, shadowMap, shadowSampler);
+        #endif
+    #elif ShadowMapMode_ == ShadowMapMode_EVSM_
+        return SampleShadowMapEVSM(shadowPos.xyz, shadowPosDX, shadowPosDY, shadowMap,
+                                   shadowSampler, extraConstants);
+    #elif ShadowMapMode_ == ShadowMapMode_MSM_
+        return SampleShadowMapMSM(shadowPos.xyz, shadowPosDX, shadowPosDY, shadowMap,
+                                  shadowSampler, extraConstants);
     #endif
 }
 
@@ -587,26 +616,30 @@ float SpotLightShadows(in float3 shadowPos, in float3 shadowPosDX, in float3 sha
 // Computes the visibility for a spot light using implicit derivatives
 //--------------------------------------------------------------------------------------
 float SpotLightShadowVisibility(in float3 positionWS, in float4x4 shadowMatrix, in uint shadowMapIdx,
-                                in Texture2DArray shadowMap, in SamplerComparisonState shadowSampler)
+                                in Texture2DArray shadowMap, in ShadowSampler shadowSampler,
+                                in float2 clipPlanes, in ExtraShadowConstants extraConstants)
 {
     // Project into shadow space
     float4 shadowPos = mul(float4(positionWS, 1.0f), shadowMatrix);
     shadowPos.xyz /= shadowPos.w;
 
-    return SpotLightShadows(shadowPos.xyz, ddx(shadowPos.xyz), ddy(shadowPos.xyz), shadowMatrix, shadowMapIdx, shadowMap, shadowSampler);
+    return SpotLightShadows(shadowPos, ddx(shadowPos.xyz), ddy(shadowPos.xyz), shadowMatrix,
+                            shadowMapIdx, shadowMap, shadowSampler, clipPlanes, extraConstants);
 }
 
 //--------------------------------------------------------------------------------------
 // Computes the visibility for a spot light using implicit derivatives
 //--------------------------------------------------------------------------------------
 float SpotLightShadowVisibility(in float3 positionWS, in float4x4 shadowMatrix,
-                                in Texture2D shadowMap, in SamplerComparisonState shadowSampler)
+                                in Texture2D shadowMap, in ShadowSampler shadowSampler, in float2 clipPlanes,
+                                in ExtraShadowConstants extraConstants)
 {
     // Project into shadow space
     float4 shadowPos = mul(float4(positionWS, 1.0f), shadowMatrix);
     shadowPos.xyz /= shadowPos.w;
 
-    return SpotLightShadows(shadowPos.xyz, ddx(shadowPos.xyz), ddy(shadowPos.xyz), shadowMatrix, shadowMap, shadowSampler);
+    return SpotLightShadows(shadowPos, ddx(shadowPos.xyz), ddy(shadowPos.xyz),
+                            shadowMatrix, shadowMap, shadowSampler, clipPlanes, extraConstants);
 }
 
 //--------------------------------------------------------------------------------------
@@ -614,7 +647,7 @@ float SpotLightShadowVisibility(in float3 positionWS, in float4x4 shadowMatrix,
 //--------------------------------------------------------------------------------------
 float SpotLightShadowVisibility(in float3 positionWS, in float3 positionNeighborX, in float3 positionNeighborY,
                                 in float4x4 shadowMatrix, in uint shadowMapIdx, in Texture2DArray shadowMap,
-                                in SamplerComparisonState shadowSampler)
+                                in ShadowSampler shadowSampler, in float2 clipPlanes, in ExtraShadowConstants extraConstants)
 {
     // Project into shadow space
     float4 shadowPos = mul(float4(positionWS, 1.0f), shadowMatrix);
@@ -628,14 +661,16 @@ float SpotLightShadowVisibility(in float3 positionWS, in float3 positionNeighbor
     shadowPosDY.xyz /= shadowPosDY.w;
     shadowPosDY.xyz -= shadowPos.xyz;
 
-    return SpotLightShadows(shadowPos.xyz, shadowPosDX.xyz, shadowPosDY.xyz, shadowMatrix, shadowMapIdx, shadowMap, shadowSampler);
+    return SpotLightShadows(shadowPos, shadowPosDX.xyz, shadowPosDY.xyz, shadowMatrix,
+                            shadowMapIdx, shadowMap, shadowSampler, clipPlanes, extraConstants);
 }
 
 //--------------------------------------------------------------------------------------
 // Computes the visibility for a spot light using explicit position derivatives
 //--------------------------------------------------------------------------------------
 float SpotLightShadowVisibility(in float3 positionWS, in float3 positionNeighborX, in float3 positionNeighborY,
-                                in float4x4 shadowMatrix, in Texture2D shadowMap, in SamplerComparisonState shadowSampler)
+                                in float4x4 shadowMatrix, in Texture2D shadowMap, in ShadowSampler shadowSampler, in float2 clipPlanes,
+                                in ExtraShadowConstants extraConstants)
 {
     // Project into shadow space
     float4 shadowPos = mul(float4(positionWS, 1.0f), shadowMatrix);
@@ -649,5 +684,6 @@ float SpotLightShadowVisibility(in float3 positionWS, in float3 positionNeighbor
     shadowPosDY.xyz /= shadowPosDY.w;
     shadowPosDY.xyz -= shadowPos.xyz;
 
-    return SpotLightShadows(shadowPos.xyz, shadowPosDX.xyz, shadowPosDY.xyz, shadowMatrix, shadowMap, shadowSampler);
+    return SpotLightShadows(shadowPos, shadowPosDX.xyz, shadowPosDY.xyz,
+                            shadowMatrix, shadowMap, shadowSampler, clipPlanes, extraConstants);
 }

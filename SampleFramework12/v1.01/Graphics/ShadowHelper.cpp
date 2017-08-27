@@ -13,17 +13,269 @@
 #include "ShadowHelper.h"
 #include "Camera.h"
 
+#include <Utility.h>
+#include <Graphics\\ShaderCompilation.h>
+#include <Graphics\\GraphicsTypes.h>
+#include <Graphics\\DX12_Helpers.h>
+
 namespace SampleFramework12
 {
 
+namespace ShadowHelper
+{
+
+static const uint32 MaxFilterRadius = 4;
+
 // Transforms from [-1,1] post-projection space to [0,1] UV space
 Float4x4 ShadowScaleOffsetMatrix = Float4x4(Float4(0.5f,  0.0f, 0.0f, 0.0f),
-                                          Float4(0.0f, -0.5f, 0.0f, 0.0f),
-                                          Float4(0.0f,  0.0f, 1.0f, 0.0f),
-                                          Float4(0.5f,  0.5f, 0.0f, 1.0f));
+                                            Float4(0.0f, -0.5f, 0.0f, 0.0f),
+                                            Float4(0.0f,  0.0f, 1.0f, 0.0f),
+                                            Float4(0.5f,  0.5f, 0.0f, 1.0f));
 
-void PrepareShadowCascades(const Float3& lightDir, uint64 shadowMapSize, bool stabilize, const Camera& camera,
-                           SunShadowConstants& constants, OrthographicCamera* cascadeCameras)
+static CompiledShaderPtr fullScreenTriVS;
+static CompiledShaderPtr smConvertPS;
+static CompiledShaderPtr filterSMHorizontalPS[MaxFilterRadius + 1];
+static CompiledShaderPtr filterSMVerticalPS[MaxFilterRadius + 1];
+
+static ID3D12PipelineState* smConvertPSO = nullptr;
+static ID3D12PipelineState* filterSMHorizontalPSO[MaxFilterRadius + 1] = { };
+static ID3D12PipelineState* filterSMVerticalPSO[MaxFilterRadius + 1] = { };
+static ID3D12RootSignature* rootSignature = nullptr;
+
+static ShadowMapMode currSMMode = ShadowMapMode::NumValues;
+static ShadowMSAAMode currMSAAMode = ShadowMSAAMode::NumValues;
+static bool initialized = false;
+
+enum RootParams : uint32
+{
+    RootParam_StandardDescriptors,
+    RootParam_CBuffer,
+
+    NumRootParams
+};
+
+struct ConvertConstants
+{
+    Float2 ShadowMapSize;
+    float PositiveExponent = 0.0f;
+    float NegativeExponent = 0.0f;
+    float FilterSize = 0.0f;
+    bool32 LinearizeDepth = 0;
+    float NearClip = 0.0f;
+    float InvClipRange = 0.0f;
+    float Proj33 = 0.0f;
+    float Proj43 = 0.0f;
+    uint32 InputMapIdx = uint32(-1);
+    uint32 ArraySliceIdx = 0;
+};
+
+void Initialize(ShadowMapMode smMode, ShadowMSAAMode msaaMode)
+{
+    Assert_(initialized == false);
+    currSMMode = smMode;
+    currMSAAMode = msaaMode;
+
+    if(smMode == ShadowMapMode::EVSM || smMode == ShadowMapMode::MSM)
+    {
+        std::wstring fullScreenTriPath = SampleFrameworkDir() + L"Shaders\\FullScreenTriangle.hlsl";
+        std::wstring smConvertPath = SampleFrameworkDir() + L"Shaders\\SMConvert.hlsl";
+        fullScreenTriVS = CompileFromFile(fullScreenTriPath.c_str(), "FullScreenTriangleVS", ShaderType::Vertex);
+        for(uint32 i = 0; i <= MaxFilterRadius; ++i)
+        {
+            CompileOptions opts;
+            opts.Add("SampleRadius_", i);
+            opts.Add("Vertical_", 0);
+            filterSMHorizontalPS[i] = CompileFromFile(smConvertPath.c_str(), "FilterSM", ShaderType::Pixel);
+
+            opts.Reset();
+            opts.Add("SampleRadius_", i);
+            opts.Add("Vertical_", 1);
+            filterSMVerticalPS[i] = CompileFromFile(smConvertPath.c_str(), "FilterSM", ShaderType::Pixel, opts);
+        }
+
+        CompileOptions opts;
+        opts.Add("EVSM_", smMode == ShadowMapMode::EVSM ? 1 : 0);
+        opts.Add("MSM_", smMode == ShadowMapMode::MSM ? 1 : 0);
+        opts.Add("MSAASamples_", NumMSAASamples());
+        smConvertPS = CompileFromFile(smConvertPath.c_str(), "SMConvert", ShaderType::Pixel, opts);
+
+        {
+            D3D12_ROOT_PARAMETER1 rootParameters[NumRootParams] = { };
+            rootParameters[RootParam_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            rootParameters[RootParam_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+            rootParameters[RootParam_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+            rootParameters[RootParam_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
+
+            rootParameters[RootParam_CBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+            rootParameters[RootParam_CBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+            rootParameters[RootParam_CBuffer].Descriptor.RegisterSpace = 0;
+            rootParameters[RootParam_CBuffer].Descriptor.ShaderRegister = 0;
+
+            D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
+            rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
+            rootSignatureDesc.pParameters = rootParameters;
+            rootSignatureDesc.NumStaticSamplers = 0;
+            rootSignatureDesc.pStaticSamplers = nullptr;
+            rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+            DX12::CreateRootSignature(&rootSignature, rootSignatureDesc);
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = { };
+        psoDesc.pRootSignature = rootSignature;
+        psoDesc.VS = fullScreenTriVS.ByteCode();
+        psoDesc.PS = smConvertPS.ByteCode();
+        psoDesc.RasterizerState = DX12::GetRasterizerState(RasterizerState::NoCull);
+        psoDesc.BlendState = DX12::GetBlendState(BlendState::Disabled);
+        psoDesc.DepthStencilState = DX12::GetDepthState(DepthState::Disabled);
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = SMFormat();
+        psoDesc.SampleDesc.Count = 1;
+        DXCall(DX12::Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&smConvertPSO)));
+
+        for(uint32 i = 0; i <= MaxFilterRadius; ++i)
+        {
+            psoDesc.PS = filterSMHorizontalPS[i].ByteCode();
+            DXCall(DX12::Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&filterSMHorizontalPSO[i])));
+
+            psoDesc.PS = filterSMVerticalPS[i].ByteCode();
+            DXCall(DX12::Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&filterSMVerticalPSO[i])));
+        }
+    }
+
+    initialized = true;
+}
+
+void Shutdown()
+{
+    Assert_(initialized);
+
+    DX12::DeferredRelease(smConvertPSO);
+    for(uint32 i = 0; i <= MaxFilterRadius; ++i)
+    {
+        DX12::DeferredRelease(filterSMHorizontalPSO[i]);
+        DX12::DeferredRelease(filterSMVerticalPSO[i]);
+    }
+
+    DX12::DeferredRelease(rootSignature);
+
+    currSMMode = ShadowMapMode::NumValues;
+    currMSAAMode = ShadowMSAAMode::NumValues;
+    initialized = false;
+}
+
+uint32 NumMSAASamples()
+{
+    Assert_(currMSAAMode != ShadowMSAAMode::NumValues);
+
+    static const uint32 numMSAASamples[] = { 1, 2, 4 };
+    StaticAssert_(ArraySize_(numMSAASamples) == uint32(ShadowMSAAMode::NumValues));
+    return numMSAASamples[uint32(currMSAAMode)];
+}
+
+DXGI_FORMAT SMFormat()
+{
+    Assert_(currSMMode != ShadowMapMode::NumValues);
+
+    if(currSMMode == ShadowMapMode::EVSM)
+        return DXGI_FORMAT_R32G32B32A32_FLOAT;
+    else if(currSMMode == ShadowMapMode::MSM)
+        return DXGI_FORMAT_R16G16B16A16_UNORM;
+
+    Assert_(false);
+    return DXGI_FORMAT_UNKNOWN;
+}
+
+void ConvertShadowMap(ID3D12GraphicsCommandList* cmdList, const DepthBuffer& depthMap, RenderTexture& smTarget,
+                      uint32 arraySlice, RenderTexture& tempTarget, float filterSizeU, float filterSizeV,
+                      bool linearizeDepth, float nearClip, float farClip, const Float4x4& projection,
+                      float positiveExponent, float negativeExponent)
+{
+    Assert_(initialized);
+    Assert_(currSMMode == ShadowMapMode::MSM || currSMMode == ShadowMapMode::EVSM);
+    Assert_(NumMSAASamples() == depthMap.MSAASamples);
+    Assert_(depthMap.Width() == smTarget.Width() && depthMap.Height() == smTarget.Height());
+
+    PIXMarker event(cmdList, "Shadow Map Conversion");
+
+    D3D12_CPU_DESCRIPTOR_HANDLE smTargetRTV = arraySlice == 0 ? smTarget.RTV : smTarget.ArrayRTVs[arraySlice];
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { smTargetRTV };
+    cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
+
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    DX12::SetViewport(cmdList, smTarget.Width(), smTarget.Height());
+
+    cmdList->SetGraphicsRootSignature(rootSignature);
+    cmdList->SetPipelineState(smConvertPSO);
+
+    DX12::BindStandardDescriptorTable(cmdList, RootParam_StandardDescriptors, CmdListMode::Graphics);
+
+    ConvertConstants constants;
+    constants.ShadowMapSize.x = float(depthMap.Width());
+    constants.ShadowMapSize.y = float(depthMap.Height());
+    constants.PositiveExponent = positiveExponent;
+    constants.NegativeExponent = negativeExponent;
+    constants.FilterSize = 0.0f;
+    constants.LinearizeDepth = linearizeDepth ? 1 : 0;
+    constants.NearClip = nearClip;
+    constants.InvClipRange = 1.0f / (farClip - nearClip);
+    constants.Proj33 = projection._33;
+    constants.Proj43 = projection._43;
+    constants.InputMapIdx = depthMap.SRV();
+    constants.ArraySliceIdx = arraySlice;
+
+    DX12::BindTempConstantBuffer(cmdList, constants, RootParam_CBuffer, CmdListMode::Graphics);
+
+    cmdList->DrawInstanced(3, 1, 0, 0);
+
+    filterSizeU = Clamp(filterSizeU, 1.0f, MaxShadowFilterSize);
+    filterSizeV = Clamp(filterSizeV, 1.0f, MaxShadowFilterSize);
+    if(filterSizeU > 1.0f || filterSizeV > 1.0f)
+    {
+        smTarget.MakeReadable(cmdList, 0, arraySlice);
+
+        // Horizontal pass
+        uint32 sampleRadiusU = uint32((filterSizeU / 2) + 0.499f);
+
+        rtvHandles[0] = tempTarget.RTV;
+        cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
+
+        tempTarget.MakeWritable(cmdList, 0, 0);
+
+        constants.FilterSize = filterSizeU;
+        constants.InputMapIdx = smTarget.SRV();
+        DX12::BindTempConstantBuffer(cmdList, constants, RootParam_CBuffer, CmdListMode::Graphics);
+
+        cmdList->SetPipelineState(filterSMHorizontalPSO[sampleRadiusU]);
+
+        cmdList->DrawInstanced(3, 1, 0, 0);
+
+        tempTarget.MakeReadable(cmdList, 0, 0);
+
+        // Vertical pass
+        uint32 sampleRadiusV = uint32((filterSizeV / 2) + 0.499f);
+
+        rtvHandles[0] = smTargetRTV;
+        cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
+
+        constants.FilterSize = filterSizeV;
+        constants.InputMapIdx = tempTarget.SRV();
+        DX12::BindTempConstantBuffer(cmdList, constants, RootParam_CBuffer, CmdListMode::Graphics);
+
+        cmdList->SetPipelineState(filterSMVerticalPSO[sampleRadiusV]);
+
+        cmdList->DrawInstanced(3, 1, 0, 0);
+
+        // smTarget.MakeReadable(cmdList, 0, arraySlice);
+    }
+
+    // context->GenerateMips(varianceShadowMap.SRView);
+}
+
+void PrepareCascades(const Float3& lightDir, uint64 shadowMapSize, bool stabilize, const Camera& camera,
+                     SunShadowConstants& constants, OrthographicCamera* cascadeCameras)
 {
     const float MinDistance = 0.0f;
     const float MaxDistance = 1.0f;
@@ -211,6 +463,8 @@ void PrepareShadowCascades(const Float3& lightDir, uint64 shadowMapSize, bool st
             constants.CascadeScales[cascadeIdx] = Float4(cascadeScale, 1.0f);
         }
     }
+}
+
 }
 
 }

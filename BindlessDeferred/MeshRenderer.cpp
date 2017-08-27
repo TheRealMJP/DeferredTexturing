@@ -669,7 +669,7 @@ void MeshRenderer::RenderSunShadowMap(ID3D12GraphicsCommandList* cmdList, const 
     ProfileBlock profileBlock(cmdList, "Sun Shadow Map Rendering");
 
     OrthographicCamera cascadeCameras[NumCascades];
-    PrepareShadowCascades(AppSettings::SunDirection, SunShadowMapSize, true, camera, sunShadowConstants, cascadeCameras);
+    ShadowHelper::PrepareCascades(AppSettings::SunDirection, SunShadowMapSize, true, camera, sunShadowConstants, cascadeCameras);
 
     // Render the meshes to each cascade
     for(uint64 cascadeIdx = 0; cascadeIdx < NumCascades; ++cascadeIdx)
@@ -719,7 +719,7 @@ void MeshRenderer::RenderSpotLightShadowMap(ID3D12GraphicsCommandList* cmdList, 
         shadowCamera.SetOrientation(light.Orientation);
         RenderSpotLightShadowDepth(cmdList, shadowCamera);
 
-        Float4x4 shadowMatrix = shadowCamera.ViewProjectionMatrix() * ShadowScaleOffsetMatrix;
+        Float4x4 shadowMatrix = shadowCamera.ViewProjectionMatrix() * ShadowHelper::ShadowScaleOffsetMatrix;
         spotLightShadowMatrices[i] = Float4x4::Transpose(shadowMatrix);
     }
 }

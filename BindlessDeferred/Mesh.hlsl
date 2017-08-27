@@ -44,7 +44,7 @@ struct SRVIndexConstants
 
 ConstantBuffer<VSConstants> VSCBuffer : register(b0);
 ConstantBuffer<ShadingConstants> PSCBuffer : register(b0);
-ConstantBuffer<ShadowConstants> ShadowCBuffer : register(b1);
+ConstantBuffer<SunShadowConstants> ShadowCBuffer : register(b1);
 ConstantBuffer<MatIndexConstants> MatIndexCBuffer : register(b2);
 ConstantBuffer<LightConstants> LightCBuffer : register(b3);
 ConstantBuffer<SRVIndexConstants> SRVIndices : register(b4);
@@ -56,7 +56,7 @@ StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffers[] : register(t0,
 StructuredBuffer<Decal> DecalBuffers[] : register(t0, space101);
 
 SamplerState AnisoSampler : register(s0);
-SamplerComparisonState ShadowSampler : register(s1);
+SamplerComparisonState ShadowMapSampler : register(s1);
 
 //=================================================================================================
 // Input/Output structs
@@ -184,7 +184,7 @@ PSOutputForward PSForward(in PSInput input)
     Texture2DArray sunShadowMap = Tex2DArrayTable[SRVIndices.SunShadowMapIdx];
     Texture2DArray spotLightShadowMap = Tex2DArrayTable[SRVIndices.SpotLightShadowMapIdx];
 
-    float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowSampler);
+    float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowMapSampler);
 
     if(AppSettings.ShowUVGradients)
         shadingResult = abs(float3(ddx(input.UV), ddy(input.UV).x)) * 64.0f;

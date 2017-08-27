@@ -32,15 +32,13 @@ float2 WarpDepth(float depth, float2 exponents)
     return float2(pos, neg);
 }
 
-float Linstep(float a, float b, float v)
+//-------------------------------------------------------------------------------------------------
+// Reduces EVSM/MSM light bleeding by clipping and rescaling
+//-------------------------------------------------------------------------------------------------
+float ReduceLightBleeding(float shadowAmt, float clipAmt)
 {
-    return saturate((v - a) / (b - a));
-}
-
-float ReduceLightBleeding(float pMax, float amount)
-{
-  // Remove the [0, amount] tail and linearly rescale (amount, 1].
-   return Linstep(amount, 1.0f, pMax);
+    // Remove the [0, clipAmt] tail and linearly rescale (clipAmt, 1].
+    return saturate((shadowAmt - clipAmt) / (1.0f - clipAmt));
 }
 
 float ChebyshevUpperBound(float2 moments, float mean, float minVariance,

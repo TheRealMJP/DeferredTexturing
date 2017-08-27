@@ -9,6 +9,8 @@
 //=================================================================================================
 
 // Options
+#define ShadowMapMode_ ShadowMapMode_DepthMap_
+
 #ifndef UseImplicitShadowDerivatives_
     #define UseImplicitShadowDerivatives_ 0
 #endif
@@ -74,7 +76,7 @@ struct ShadingInput
     SamplerState AnisoSampler;
 
     ShadingConstants ShadingCBuffer;
-    ShadowConstants ShadowCBuffer;
+    SunShadowConstants ShadowCBuffer;
     LightConstants LightCBuffer;
 };
 
@@ -116,7 +118,7 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
     float3 positionWS = input.PositionWS;
 
     const ShadingConstants CBuffer = input.ShadingCBuffer;
-    const ShadowConstants ShadowCBuffer = input.ShadowCBuffer;
+    const SunShadowConstants ShadowCBuffer = input.ShadowCBuffer;
 
     float3 viewWS = normalize(CBuffer.CameraPosWS - positionWS);
 
@@ -251,11 +253,11 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
     {
         #if UseImplicitShadowDerivatives_
             // Forward path
-            float sunShadowVisibility = SunShadowVisibility(positionWS, depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer);
+            float sunShadowVisibility = SunShadowVisibility(positionWS, depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer, 0);
         #else
             // Deferred path
             float sunShadowVisibility = SunShadowVisibility(positionWS, positionNeighborX, positionNeighborY,
-                                                            depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer);
+                                                            depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer, 0);
         #endif
 
         float3 sunDirection = CBuffer.SunDirectionWS;
@@ -308,7 +310,7 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
                     // We have to use explicit gradients for spotlight shadows, since the looping/branching is non-uniform
                     float spotLightVisibility = SpotLightShadowVisibility(positionWS, positionNeighborX, positionNeighborY,
                                                                           input.LightCBuffer.ShadowMatrices[spotLightIdx],
-                                                                          spotLightIdx, SpotLightShadowMap, ShadowSampler);
+                                                                          spotLightIdx, SpotLightShadowMap, ShadowSampler, 0.0f, 0);
 
                     output += CalcLighting(normalWS, surfaceToLight, intensity, diffuseAlbedo, specularAlbedo,
                                            roughness, positionWS, CBuffer.CameraPosWS) * spotLightVisibility;

@@ -1267,13 +1267,13 @@ void VolumeTexture::Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURC
 void VolumeTexture::MakeReadable(ID3D12GraphicsCommandList* cmdList) const
 {
     Assert_(Texture.Resource != nullptr);
-    DX12::TransitionResource(cmdList, Texture.Resource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ, 0);
+    DX12::TransitionResource(cmdList, Texture.Resource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 0);
 }
 
 void VolumeTexture::MakeWritable(ID3D12GraphicsCommandList* cmdList) const
 {
     Assert_(Texture.Resource != nullptr);
-    DX12::TransitionResource(cmdList, Texture.Resource, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 0);
+    DX12::TransitionResource(cmdList, Texture.Resource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 0);
 }
 
 // == DepthBuffer ===============================================================================

@@ -131,8 +131,9 @@ TempRenderTarget* PostProcessHelper::GetTempRenderTarget(uint64 width, uint64 he
     rtInit.Height = height;
     rtInit.Format = format;
     rtInit.CreateUAV = useAsUAV;
+    rtInit.InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
-    TempRenderTarget* tempRT = new TempRenderTarget();    
+    TempRenderTarget* tempRT = new TempRenderTarget();
     tempRT->RT.Initialize(rtInit);
     tempRT->RT.Texture.Resource->SetName(L"PP Temp Render Target");
     tempRT->InUse = true;

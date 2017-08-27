@@ -238,6 +238,8 @@ void BindlessDeferred::Initialize()
         AppSettings::ClusterRasterizationMode.ClampNumValues(uint32(ClusterRasterizationModes::NumValues) - 1);
     }
 
+    ShadowHelper::Initialize(ShadowMapMode::DepthMap, ShadowMSAAMode::MSAA1x);
+
     // Load the scenes
     for(uint64 i = 0; i < uint64(Scenes::NumValues); ++i)
     {
@@ -628,6 +630,8 @@ void BindlessDeferred::Initialize()
 
 void BindlessDeferred::Shutdown()
 {
+    ShadowHelper::Shutdown();
+
     for(uint64 i = 0; i < ArraySize_(sceneModels); ++i)
         sceneModels[i].Shutdown();
     meshRenderer.Shutdown();
@@ -855,6 +859,7 @@ void BindlessDeferred::CreateRenderTargets()
         rtInit.MSAASamples = NumSamples;
         rtInit.ArraySize = 1;
         rtInit.CreateUAV = NumSamples == 1;
+        rtInit.InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         rtInit.Name = L"Main Target";
         mainTarget.Initialize(rtInit);
     }
@@ -921,6 +926,7 @@ void BindlessDeferred::CreateRenderTargets()
             rtInit.MSAASamples = 1;
             rtInit.ArraySize = 1;
             rtInit.CreateUAV = false;
+            rtInit.InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
             rtInit.Name = L"Resolve Target";
             resolveTarget.Initialize(rtInit);
         }
@@ -933,6 +939,7 @@ void BindlessDeferred::CreateRenderTargets()
             rtInit.MSAASamples = 1;
             rtInit.ArraySize = 1;
             rtInit.CreateUAV = true;
+            rtInit.InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
             rtInit.Name = L"Deferred MSAA Target";
             deferredMSAATarget.Initialize(rtInit);
         }

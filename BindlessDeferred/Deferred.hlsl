@@ -46,7 +46,7 @@ struct SRVIndexConstants
 };
 
 ConstantBuffer<ShadingConstants> PSCBuffer : register(b0);
-ConstantBuffer<ShadowConstants> ShadowCBuffer : register(b1);
+ConstantBuffer<SunShadowConstants> ShadowCBuffer : register(b1);
 ConstantBuffer<DeferredConstants> DeferredCBuffer : register(b2);
 ConstantBuffer<LightConstants> LightCBuffer : register(b3);
 ConstantBuffer<SRVIndexConstants> SRVIndices : register(b4);
@@ -76,7 +76,7 @@ StructuredBuffer<uint> MSAATileBuffers[] : register(t0, space103);
 #endif
 
 SamplerState AnisoSampler : register(s0);
-SamplerComparisonState ShadowSampler : register(s1);
+SamplerComparisonState ShadowMapSampler : register(s1);
 
 // MSAA subsample locations
 #if NumMSAASamples_ == 4
@@ -255,7 +255,7 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
     shadingInput.ShadowCBuffer = ShadowCBuffer;
     shadingInput.LightCBuffer = LightCBuffer;
 
-    float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowSampler);
+    float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowMapSampler);
 
     #if MSAA_
         if(zw >= 1.0f)
