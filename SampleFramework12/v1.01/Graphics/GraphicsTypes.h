@@ -387,7 +387,7 @@ struct RenderTextureInit
     uint64 MSAASamples = 1;
     uint64 ArraySize = 1;
     bool32 CreateUAV = false;
-    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     const wchar* Name = nullptr;
 };
 
@@ -428,7 +428,7 @@ struct VolumeTextureInit
     uint64 Height = 0;
     uint64 Depth = 0;
     DXGI_FORMAT Format = DXGI_FORMAT_UNKNOWN;
-    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     const wchar* Name = nullptr;
 };
 

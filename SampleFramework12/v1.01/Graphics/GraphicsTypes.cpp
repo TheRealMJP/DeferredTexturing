@@ -1096,8 +1096,6 @@ void RenderTexture::Initialize(const RenderTextureInit& init)
     textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     if(init.CreateUAV)
         textureDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-    if(init.MSAASamples == 1)
-        textureDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
     textureDesc.DepthOrArraySize = uint16(init.ArraySize);
     textureDesc.SampleDesc.Count = uint32(init.MSAASamples);
     textureDesc.SampleDesc.Quality = init.MSAASamples > 1 ? DX12::StandardMSAAPattern : 0;
@@ -1221,7 +1219,6 @@ void VolumeTexture::Initialize(const VolumeTextureInit& init)
     textureDesc.Width = uint32(init.Width);
     textureDesc.Height = uint32(init.Height);
     textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-    textureDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
     textureDesc.DepthOrArraySize = uint16(init.Depth);
     textureDesc.SampleDesc.Count = 1;
     textureDesc.SampleDesc.Quality = 0;
