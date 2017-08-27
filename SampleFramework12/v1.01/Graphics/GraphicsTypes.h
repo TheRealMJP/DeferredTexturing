@@ -68,6 +68,9 @@ struct DescriptorHeap
     D3D12_CPU_DESCRIPTOR_HANDLE CPUHandleFromIndex(uint32 descriptorIdx) const;
     D3D12_GPU_DESCRIPTOR_HANDLE GPUHandleFromIndex(uint32 descriptorIdx) const;
 
+    D3D12_CPU_DESCRIPTOR_HANDLE CPUHandleFromIndex(uint32 descriptorIdx, uint64 heapIdx) const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GPUHandleFromIndex(uint32 descriptorIdx, uint64 heapIdx) const;
+
     uint32 IndexFromHandle(D3D12_CPU_DESCRIPTOR_HANDLE handle);
     uint32 IndexFromHandle(D3D12_GPU_DESCRIPTOR_HANDLE handle);
 
@@ -207,6 +210,8 @@ private:
 
     StructuredBuffer(const StructuredBuffer& other) { }
 
+    D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc(uint64 bufferIdx) const;
+    void UpdateDynamicSRV() const;
 };
 
 struct FormattedBufferInit
@@ -257,6 +262,8 @@ private:
 
     FormattedBuffer(const FormattedBuffer& other) { }
 
+    D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc(uint64 bufferIdx) const;
+    void UpdateDynamicSRV() const;
 };
 
 struct RawBufferInit
@@ -305,6 +312,8 @@ private:
 
     RawBuffer(const RawBuffer& other) { }
 
+    D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc(uint64 bufferIdx) const;
+    void UpdateDynamicSRV() const;
 };
 
 struct ReadbackBuffer

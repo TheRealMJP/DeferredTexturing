@@ -58,6 +58,8 @@ template<typename T> void Release(T*& resource)
     }
 }
 
+void DeferredCreateSRV(ID3D12Resource* resource, const D3D12_SHADER_RESOURCE_VIEW_DESC& desc, uint32 descriptorIdx);
+
 } // namespace DX12
 
 } // namespace SampleFramework12

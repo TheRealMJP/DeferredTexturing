@@ -163,19 +163,31 @@ void DescriptorHeap::EndFrame()
 
 D3D12_CPU_DESCRIPTOR_HANDLE DescriptorHeap::CPUHandleFromIndex(uint32 descriptorIdx) const
 {
-    Assert_(Heaps[0] != nullptr);
-    Assert_(descriptorIdx < TotalNumDescriptors());
-    D3D12_CPU_DESCRIPTOR_HANDLE handle = CPUStart[HeapIndex];
-    handle.ptr += descriptorIdx * DescriptorSize;
-    return handle;
+    return CPUHandleFromIndex(descriptorIdx, HeapIndex);
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE DescriptorHeap::GPUHandleFromIndex(uint32 descriptorIdx) const
 {
+    return GPUHandleFromIndex(descriptorIdx, HeapIndex);
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DescriptorHeap::CPUHandleFromIndex(uint32 descriptorIdx, uint64 heapIdx) const
+{
     Assert_(Heaps[0] != nullptr);
+    Assert_(heapIdx < NumHeaps);
+    Assert_(descriptorIdx < TotalNumDescriptors());
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = CPUStart[heapIdx];
+    handle.ptr += descriptorIdx * DescriptorSize;
+    return handle;
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE DescriptorHeap::GPUHandleFromIndex(uint32 descriptorIdx, uint64 heapIdx) const
+{
+    Assert_(Heaps[0] != nullptr);
+    Assert_(heapIdx < NumHeaps);
     Assert_(descriptorIdx < TotalNumDescriptors());
     Assert_(ShaderVisible);
-    D3D12_GPU_DESCRIPTOR_HANDLE handle = GPUStart[HeapIndex];
+    D3D12_GPU_DESCRIPTOR_HANDLE handle = GPUStart[heapIdx];
     handle.ptr += descriptorIdx * DescriptorSize;
     return handle;
 }
@@ -314,10 +326,12 @@ MapResult Buffer::Map()
     Assert_(Dynamic);
     Assert_(GPUWritable == false);
 
-    // Make sure that we always do this once per frame
+    // Make sure that we do this at most once per-frame
     Assert_(UploadFrame != DX12::CurrentCPUFrame);
     UploadFrame = DX12::CurrentCPUFrame;
-    CurrBuffer = DX12::CurrentCPUFrame % DX12::RenderLatency;
+
+    // Cycle to the next buffer
+    CurrBuffer = (DX12::CurrentCPUFrame + 1) % DX12::RenderLatency;
 
     MapResult result;
     result.ResourceOffset = CurrBuffer * Size;
@@ -344,10 +358,13 @@ uint64 Buffer::MultiUpdateData(const void* srcData[], uint64 srcSize[], uint64 d
 {
     Assert_(GPUWritable && Dynamic);
     Assert_(numUpdates > 0);
-    Assert_(UploadFrame != DX12::CurrentCPUFrame);
 
+    // Make sure that we do this at most once per-frame
+    Assert_(UploadFrame != DX12::CurrentCPUFrame);
     UploadFrame = DX12::CurrentCPUFrame;
-    CurrBuffer = DX12::CurrentCPUFrame % DX12::RenderLatency;
+
+    // Cycle to the next buffer
+    CurrBuffer = (DX12::CurrentCPUFrame + 1) % DX12::RenderLatency;
 
     uint64 currOffset = CurrBuffer * Size;
 
@@ -405,7 +422,7 @@ void Buffer::UAVBarrier(ID3D12GraphicsCommandList* cmdList) const
 
 bool Buffer::ReadyForBinding() const
 {
-    return Initialized() && (Dynamic == false || UploadFrame == DX12::CurrentCPUFrame);
+    return Initialized();
 }
 
 #endif
@@ -495,21 +512,10 @@ void StructuredBuffer::Initialize(const StructuredBufferInit& init)
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
     SRV = srvAlloc.Index;
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Buffer.FirstElement = 0;
-    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-    srvDesc.Buffer.NumElements = uint32(NumElements);
-    srvDesc.Buffer.StructureByteStride = uint32(Stride);
-
-    for(uint32 i = 0; i < DX12::SRVDescriptorHeap.NumHeaps; ++i)
-    {
-        if(init.Dynamic)
-            srvDesc.Buffer.FirstElement = uint32(NumElements * i);
+    // Start off all SRV's pointing to the first buffer
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = SRVDesc(0);
+    for(uint32 i = 0; i < ArraySize_(srvAlloc.Handles); ++i)
         DX12::Device->CreateShaderResourceView(InternalBuffer.Resource, &srvDesc, srvAlloc.Handles[i]);
-    }
 
     if(init.CreateUAV)
     {
@@ -588,6 +594,8 @@ void* StructuredBuffer::Map()
     MapResult mapResult = InternalBuffer.Map();
     GPUAddress = mapResult.GPUAddress;
 
+    UpdateDynamicSRV();
+
     return mapResult.CPUAddress;
 }
 
@@ -601,6 +609,8 @@ void StructuredBuffer::MapAndSetData(const void* data, uint64 numElements)
 void StructuredBuffer::UpdateData(const void* srcData, uint64 srcNumElements, uint64 dstElemOffset)
 {
     GPUAddress = InternalBuffer.UpdateData(srcData, srcNumElements * Stride, dstElemOffset * Stride);
+
+    UpdateDynamicSRV();
 }
 
 void StructuredBuffer::MultiUpdateData(const void* srcData[], uint64 srcNumElements[], uint64 dstElemOffset[], uint64 numUpdates)
@@ -615,6 +625,8 @@ void StructuredBuffer::MultiUpdateData(const void* srcData[], uint64 srcNumEleme
     }
 
     GPUAddress = InternalBuffer.MultiUpdateData(srcData, srcSizes, dstOffsets, numUpdates);
+
+    UpdateDynamicSRV();
 }
 
 void StructuredBuffer::Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const
@@ -635,6 +647,29 @@ void StructuredBuffer::MakeWritable(ID3D12GraphicsCommandList* cmdList) const
 void StructuredBuffer::UAVBarrier(ID3D12GraphicsCommandList* cmdList) const
 {
     InternalBuffer.UAVBarrier(cmdList);
+}
+
+D3D12_SHADER_RESOURCE_VIEW_DESC StructuredBuffer::SRVDesc(uint64 bufferIdx) const
+{
+    Assert_(bufferIdx == 0 || InternalBuffer.Dynamic);
+    Assert_(bufferIdx < DX12::RenderLatency);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Buffer.FirstElement = uint32(NumElements * bufferIdx);
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    srvDesc.Buffer.NumElements = uint32(NumElements);
+    srvDesc.Buffer.StructureByteStride = uint32(Stride);
+    return srvDesc;
+}
+
+void StructuredBuffer::UpdateDynamicSRV() const
+{
+    Assert_(InternalBuffer.Dynamic);
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = SRVDesc(InternalBuffer.CurrBuffer);
+    DX12::DeferredCreateSRV(InternalBuffer.Resource, srvDesc, SRV);
 }
 
 // == FormattedBuffer ============================================================================
@@ -666,21 +701,10 @@ void FormattedBuffer::Initialize(const FormattedBufferInit& init)
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
     SRV = srvAlloc.Index;
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = { };
-    srvDesc.Format = Format;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Buffer.FirstElement = 0;
-    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-    srvDesc.Buffer.NumElements = uint32(NumElements);
-
-    for(uint32 i = 0; i < DX12::SRVDescriptorHeap.NumHeaps; ++i)
-    {
-        if(init.Dynamic)
-            srvDesc.Buffer.FirstElement = uint32(NumElements * i);
+// Start off all SRV's pointing to the first buffer
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = SRVDesc(0);
+    for(uint32 i = 0; i < ArraySize_(srvAlloc.Handles); ++i)
         DX12::Device->CreateShaderResourceView(InternalBuffer.Resource, &srvDesc, srvAlloc.Handles[i]);
-    }
-
 
     if(init.CreateUAV)
     {
@@ -773,6 +797,28 @@ void FormattedBuffer::UAVBarrier(ID3D12GraphicsCommandList* cmdList) const
     InternalBuffer.UAVBarrier(cmdList);
 }
 
+D3D12_SHADER_RESOURCE_VIEW_DESC FormattedBuffer::SRVDesc(uint64 bufferIdx) const
+{
+    Assert_(bufferIdx == 0 || InternalBuffer.Dynamic);
+    Assert_(bufferIdx < DX12::RenderLatency);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = Format;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Buffer.FirstElement = uint32(NumElements * bufferIdx);
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    srvDesc.Buffer.NumElements = uint32(NumElements);
+    return srvDesc;
+}
+
+void FormattedBuffer::UpdateDynamicSRV() const
+{
+    Assert_(InternalBuffer.Dynamic);
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = SRVDesc(InternalBuffer.CurrBuffer);
+    DX12::DeferredCreateSRV(InternalBuffer.Resource, srvDesc, SRV);
+}
+
 // == RawBuffer ============================================================================
 
 RawBuffer::RawBuffer()
@@ -799,19 +845,10 @@ void RawBuffer::Initialize(const RawBufferInit& init)
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
     SRV = srvAlloc.Index;
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = { };
-    srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Buffer.FirstElement = 0;
-    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
-    srvDesc.Buffer.NumElements = uint32(NumElements);
-    for(uint32 i = 0; i < DX12::SRVDescriptorHeap.NumHeaps; ++i)
-    {
-        if(init.Dynamic)
-            srvDesc.Buffer.FirstElement = uint32(NumElements * i);
+    // Start off all SRV's pointing to the first buffer
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = SRVDesc(0);
+    for(uint32 i = 0; i < ArraySize_(srvAlloc.Handles); ++i)
         DX12::Device->CreateShaderResourceView(InternalBuffer.Resource, &srvDesc, srvAlloc.Handles[i]);
-    }
 
     if(init.CreateUAV)
     {
@@ -889,6 +926,28 @@ void RawBuffer::MakeWritable(ID3D12GraphicsCommandList* cmdList) const
 void RawBuffer::UAVBarrier(ID3D12GraphicsCommandList* cmdList) const
 {
     InternalBuffer.UAVBarrier(cmdList);
+}
+
+D3D12_SHADER_RESOURCE_VIEW_DESC RawBuffer::SRVDesc(uint64 bufferIdx) const
+{
+    Assert_(bufferIdx == 0 || InternalBuffer.Dynamic);
+    Assert_(bufferIdx < DX12::RenderLatency);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Buffer.FirstElement = uint32(NumElements * bufferIdx);
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+    srvDesc.Buffer.NumElements = uint32(NumElements);
+    return srvDesc;
+}
+
+void RawBuffer::UpdateDynamicSRV() const
+{
+    Assert_(InternalBuffer.Dynamic);
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = SRVDesc(InternalBuffer.CurrBuffer);
+    DX12::DeferredCreateSRV(InternalBuffer.Resource, srvDesc, SRV);
 }
 
 // == ReadbackBuffer ==============================================================================

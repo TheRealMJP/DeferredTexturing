@@ -48,11 +48,39 @@ static Fence FrameFence;
 static GrowableList<IUnknown*> DeferredReleases[RenderLatency];
 static bool ShuttingDown = false;
 
-static void ProcessDeferredReleases(uint64 idx)
+struct DeferredSRVCreate
 {
-    for(uint64 i = 0; i < DeferredReleases[idx].Count(); ++i)
-        DeferredReleases[idx][i]->Release();
-    DeferredReleases[idx].RemoveAll(nullptr);
+    ID3D12Resource* Resource = nullptr;
+    D3D12_SHADER_RESOURCE_VIEW_DESC Desc = { };
+    uint32 DescriptorIdx = uint32(-1);
+};
+
+static Array<DeferredSRVCreate> DeferredSRVCreates[RenderLatency];
+static volatile uint64 DeferredSRVCreateCount[RenderLatency] = { };
+
+static void ProcessDeferredReleases(uint64 frameIdx)
+{
+    for(uint64 i = 0; i < DeferredReleases[frameIdx].Count(); ++i)
+        DeferredReleases[frameIdx][i]->Release();
+    DeferredReleases[frameIdx].RemoveAll(nullptr);
+}
+
+static void ProcessDeferredSRVCreates(uint64 frameIdx)
+{
+    uint64 createCount = DeferredSRVCreateCount[frameIdx];
+    for(uint64 i = 0; i < createCount; ++i)
+    {
+        DeferredSRVCreate& create = DeferredSRVCreates[frameIdx][i];
+        Assert_(create.Resource != nullptr);
+
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = SRVDescriptorHeap.CPUHandleFromIndex(create.DescriptorIdx, frameIdx);
+        Device->CreateShaderResourceView(create.Resource, &create.Desc, handle);
+
+        create.Resource = nullptr;
+        create.DescriptorIdx = uint32(-1);
+    }
+
+    DeferredSRVCreateCount[frameIdx] = 0;
 }
 
 void Initialize(D3D_FEATURE_LEVEL minFeatureLevel, uint32 adapterIdx)
@@ -156,6 +184,9 @@ void Initialize(D3D_FEATURE_LEVEL minFeatureLevel, uint32 adapterIdx)
 
     FrameFence.Init(0);
 
+    for(uint64 i = 0; i < ArraySize_(DeferredSRVCreates); ++i)
+        DeferredSRVCreates[i].Init(1024);
+
     Initialize_Helpers();
     Initialize_Upload();
 }
@@ -250,6 +281,8 @@ void EndFrame(IDXGISwapChain4* swapChain, uint32 syncIntervals)
 
     // See if we have any deferred releases to process
     ProcessDeferredReleases(CurrFrameIdx);
+
+    ProcessDeferredSRVCreates(CurrFrameIdx);
 }
 
 void FlushGPU()
@@ -266,7 +299,11 @@ void FlushGPU()
 
     // Clean up what we can now
     for(uint64 i = 1; i < RenderLatency; ++i)
-        ProcessDeferredReleases((i + CurrFrameIdx) % RenderLatency);
+    {
+        uint64 frameIdx = (i + CurrFrameIdx) % RenderLatency;
+        ProcessDeferredReleases(frameIdx);
+        ProcessDeferredSRVCreates(frameIdx);
+    }
 }
 
 void DeferredRelease_(IUnknown* resource)
@@ -282,6 +319,19 @@ void DeferredRelease_(IUnknown* resource)
     }
 
     DeferredReleases[CurrFrameIdx].Add(resource);
+}
+
+void DeferredCreateSRV(ID3D12Resource* resource, const D3D12_SHADER_RESOURCE_VIEW_DESC& desc, uint32 descriptorIdx)
+{
+    for(uint64 i = 1; i < RenderLatency; ++i)
+    {
+        uint64 frameIdx = (CurrentCPUFrame + i) % RenderLatency;
+        uint64 writeIdx = InterlockedIncrement(&DeferredSRVCreateCount[frameIdx]) - 1;
+        DeferredSRVCreate& create = DeferredSRVCreates[frameIdx][writeIdx];
+        create.Resource = resource;
+        create.Desc = desc;
+        create.DescriptorIdx = descriptorIdx;
+    }
 }
 
 } // namespace SampleFramework12

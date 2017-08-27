@@ -212,5 +212,9 @@ public class Settings
         [HelpText("Visualize the UV gradients used for mip selection")]
         [DisplayName("Show UV Gradients")]
         bool ShowUVGradients = false;
+
+        [HelpText("Modulates the light intensity to test buffer uploads")]
+        [DisplayName("Animate Light Intensity")]
+        bool AnimateLightIntensity = false;
     }
 }

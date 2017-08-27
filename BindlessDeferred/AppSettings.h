@@ -96,6 +96,7 @@ namespace AppSettings
     extern BoolSetting ShowClusterVisualizer;
     extern BoolSetting ShowMSAAMask;
     extern BoolSetting ShowUVGradients;
+    extern BoolSetting AnimateLightIntensity;
 
     struct AppSettingsCBuffer
     {
@@ -118,6 +119,7 @@ namespace AppSettings
         bool32 ShowDecalCounts;
         bool32 ShowMSAAMask;
         bool32 ShowUVGradients;
+        bool32 AnimateLightIntensity;
     };
 
     extern ConstantBuffer CBuffer;

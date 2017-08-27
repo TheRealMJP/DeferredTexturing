@@ -65,6 +65,7 @@ namespace AppSettings
     BoolSetting ShowClusterVisualizer;
     BoolSetting ShowMSAAMask;
     BoolSetting ShowUVGradients;
+    BoolSetting AnimateLightIntensity;
 
     ConstantBuffer CBuffer;
     const uint32 CBufferRegister = 12;
@@ -182,6 +183,9 @@ namespace AppSettings
         ShowUVGradients.Initialize("ShowUVGradients", "Debug", "Show UV Gradients", "Visualize the UV gradients used for mip selection", false);
         Settings.AddSetting(&ShowUVGradients);
 
+        AnimateLightIntensity.Initialize("AnimateLightIntensity", "Debug", "Animate Light Intensity", "Modulates the light intensity to test buffer uploads", false);
+        Settings.AddSetting(&AnimateLightIntensity);
+
         ConstantBufferInit cbInit;
         cbInit.Size = sizeof(AppSettingsCBuffer);
         cbInit.Dynamic = true;
@@ -217,6 +221,7 @@ namespace AppSettings
         cbData.ShowDecalCounts = ShowDecalCounts;
         cbData.ShowMSAAMask = ShowMSAAMask;
         cbData.ShowUVGradients = ShowUVGradients;
+        cbData.AnimateLightIntensity = AnimateLightIntensity;
 
         CBuffer.MapAndSetData(cbData);
     }

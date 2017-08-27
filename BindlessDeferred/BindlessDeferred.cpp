@@ -46,6 +46,8 @@ StaticAssert_(ArraySize_(SceneCameraRotations) == uint64(Scenes::NumValues));
 
 static const uint64 NumConeSides = 16;
 
+static const float SpotLightIntensityFactor = 25.0f;
+
 static enkiTaskScheduler* taskScheduler = nullptr;
 static enkiTaskSet* taskSet = nullptr;
 static const bool EnableMultithreadedCompilation = true;
@@ -1000,7 +1002,7 @@ void BindlessDeferred::InitializeScene()
             SpotLight& spotLight = spotLights[i];
             spotLight.Position = srcLight.Position;
             spotLight.Direction = -srcLight.Direction;
-            spotLight.Intensity = srcLight.Intensity * 25.0f;
+            spotLight.Intensity = srcLight.Intensity * SpotLightIntensityFactor;
             spotLight.AngularAttenuationX = std::cos(srcLight.AngularAttenuation.x * 0.5f);
             spotLight.AngularAttenuationY = std::cos(srcLight.AngularAttenuation.y * 0.5f);
             spotLight.Range = AppSettings::SpotLightRange;
@@ -1447,6 +1449,15 @@ void BindlessDeferred::UpdateLights()
         boundsData[spotLightIdx] = bounds;
         intersectsCamera[spotLightIdx] = SphereConeIntersection(spotLight.Position, srcSpotLight.Direction, spotLight.Range,
                                                                 srcSpotLight.AngularAttenuation.y, nearClipCenter, nearClipRadius);
+
+        if(AppSettings::AnimateLightIntensity)
+        {
+            float intensityFactor = std::cos(appTimer.ElapsedSecondsF() * Pi + spotLightIdx * 0.1f);
+            intensityFactor = intensityFactor * 0.5f + 1.0f;
+            spotLights[spotLightIdx].Intensity = srcSpotLight.Intensity * intensityFactor * SpotLightIntensityFactor;
+        }
+        else
+            spotLights[spotLightIdx].Intensity = srcSpotLight.Intensity * SpotLightIntensityFactor;
     }
 
     numIntersectingSpotLights = 0;
