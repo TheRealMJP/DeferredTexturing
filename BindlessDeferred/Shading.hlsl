@@ -18,7 +18,7 @@
 #define UseReceiverPlaneBias_ 1
 
 // Set this to zero to make compile times quicker
-#define UseGatherPCF_ 0
+#define UseGatherPCF_ 1
 
 #include <DescriptorTables.hlsl>
 #include <SH.hlsl>
