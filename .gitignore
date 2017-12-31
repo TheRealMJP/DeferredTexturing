@@ -167,3 +167,4 @@ imgui.ini
 
 # Sublime
 *.sublime-workspace
+*.args.json
