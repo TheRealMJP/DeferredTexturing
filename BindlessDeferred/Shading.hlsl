@@ -9,6 +9,8 @@
 //=================================================================================================
 
 // Options
+#define ShadowMapMode_ ShadowMapMode_DepthMap_
+
 #ifndef UseImplicitShadowDerivatives_
     #define UseImplicitShadowDerivatives_ 0
 #endif
@@ -18,6 +20,7 @@
 // Set this to zero to make compile times quicker
 #define UseGatherPCF_ 1
 
+#include <DescriptorTables.hlsl>
 #include <SH.hlsl>
 #include <Shadows.hlsl>
 #include <BRDF.hlsl>
@@ -37,7 +40,7 @@ struct ShadingConstants
     float CursorDecalIntensity;
     Quaternion CursorDecalOrientation;
     float3 CursorDecalSize;
-    uint CursorDecalType;
+    uint CursorDecalTexIdx;
     uint NumXTiles;
     uint NumXYTiles;
     float NearClip;
@@ -73,11 +76,9 @@ struct ShadingInput
     SamplerState AnisoSampler;
 
     ShadingConstants ShadingCBuffer;
-    ShadowConstants ShadowCBuffer;
+    SunShadowConstants ShadowCBuffer;
     LightConstants LightCBuffer;
 };
-
-Texture2D<float4> DecalTextures[NumDecalTextures] : register(t0, space1);
 
 //-------------------------------------------------------------------------------------------------
 // Calculates the lighting result for an analytical light source
@@ -109,15 +110,15 @@ float3 CalcLighting(in float3 normal, in float3 lightDir, in float3 peakIrradian
 // are passed directly to this function instead of through the ShadingInput struct in order to
 // work around incorrect behavior from the shader compiler
 //-------------------------------------------------------------------------------------------------
-float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
-                  in Texture2DArray<float> SpotLightShadowMap, in SamplerComparisonState ShadowSampler)
+float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
+                  in Texture2DArray SpotLightShadowMap, in SamplerComparisonState ShadowSampler)
 {
     float3 vtxNormalWS = input.TangentFrame._m20_m21_m22;
     float3 normalWS = vtxNormalWS;
     float3 positionWS = input.PositionWS;
 
     const ShadingConstants CBuffer = input.ShadingCBuffer;
-    const ShadowConstants ShadowCBuffer = input.ShadowCBuffer;
+    const SunShadowConstants ShadowCBuffer = input.ShadowCBuffer;
 
     float3 viewWS = normalize(CBuffer.CameraPosWS - positionWS);
 
@@ -186,9 +187,8 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
                 {
                     // Pull out the right textures from the descriptor array
                     float2 decalUV = saturate(decalUVW.xy * 0.5f + 0.5f);
-                    const uint baseTextureIdx = decal.Type * NumTexturesPerDecal;
-                    Texture2D<float4> decalAlbedoMap = DecalTextures[NonUniformResourceIndex(baseTextureIdx + 0)];
-                    Texture2D<float4> decalNormalMap = DecalTextures[NonUniformResourceIndex(baseTextureIdx + 1)];
+                    Texture2D decalAlbedoMap = Tex2DTable[NonUniformResourceIndex(decal.AlbedoTexIdx)];
+                    Texture2D decalNormalMap = Tex2DTable[NonUniformResourceIndex(decal.NormalTexIdx)];
 
                     // Calculate decal UV gradients
                     float3 decalPosNeighborX = positionNeighborX - decal.Position;
@@ -224,7 +224,7 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
     }
 
     // Apply the decal "cursor", indicating where a new decal will be placed
-    if(CBuffer.CursorDecalIntensity > 0.0f && CBuffer.CursorDecalType != uint(-1))
+    if(CBuffer.CursorDecalIntensity > 0.0f && CBuffer.CursorDecalTexIdx != uint(-1))
     {
         float3x3 decalRot = QuatTo3x3(CBuffer.CursorDecalOrientation);
         float3 localPos = positionWS - CBuffer.CursorDecalPos;
@@ -236,7 +236,7 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
            decalUVW.z >= -1.0f && decalUVW.z <= 1.0f)
         {
             float2 decalUV = saturate(decalUVW.xy * 0.5f + 0.5f);
-            Texture2D<float4> decalAlbedoMap = DecalTextures[CBuffer.CursorDecalType * NumTexturesPerDecal + 0];
+            Texture2D<float4> decalAlbedoMap = Tex2DTable[CBuffer.CursorDecalTexIdx];
             float4 decalAlbedo = decalAlbedoMap.SampleLevel(input.AnisoSampler, decalUV, 0.0f);
 
             float decalBlend = decalAlbedo.w;
@@ -253,11 +253,11 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
     {
         #if UseImplicitShadowDerivatives_
             // Forward path
-            float sunShadowVisibility = SunShadowVisibility(positionWS, depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer);
+            float sunShadowVisibility = SunShadowVisibility(positionWS, depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer, 0);
         #else
             // Deferred path
             float sunShadowVisibility = SunShadowVisibility(positionWS, positionNeighborX, positionNeighborY,
-                                                            depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer);
+                                                            depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer, 0);
         #endif
 
         float3 sunDirection = CBuffer.SunDirectionWS;
@@ -310,7 +310,7 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray<float> SunShadowMap,
                     // We have to use explicit gradients for spotlight shadows, since the looping/branching is non-uniform
                     float spotLightVisibility = SpotLightShadowVisibility(positionWS, positionNeighborX, positionNeighborY,
                                                                           input.LightCBuffer.ShadowMatrices[spotLightIdx],
-                                                                          spotLightIdx, SpotLightShadowMap, ShadowSampler);
+                                                                          spotLightIdx, SpotLightShadowMap, ShadowSampler, 0.0f, 0);
 
                     output += CalcLighting(normalWS, surfaceToLight, intensity, diffuseAlbedo, specularAlbedo,
                                            roughness, positionWS, CBuffer.CameraPosWS) * spotLightVisibility;

@@ -1,9 +1,3 @@
-//
-// This file was copied from //depot/rs_xbox_dev_flight/xbox/drivers/Graphics/Pix3/PixEvt/inc/PIXEventsCommon.h#6
-//
-// To refresh: run 'UpdateFromXbox -latest'
-//
-
 /*==========================================================================;
 *
 *  Copyright (C) Microsoft Corporation.  All Rights Reserved.

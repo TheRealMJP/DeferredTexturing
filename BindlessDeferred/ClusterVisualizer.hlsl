@@ -12,6 +12,7 @@
 // Includes
 //=================================================================================================
 #include <Constants.hlsl>
+#include <DescriptorTables.hlsl>
 #include "AppSettings.hlsl"
 
 //=================================================================================================
@@ -27,18 +28,21 @@ struct ClusterVisConstants
     float2 DisplaySize;
     uint NumXTiles;
     uint NumXYTiles;
+
+    uint DecalClusterBufferIdx;
+    uint SpotLightClusterBufferIdx;
 };
 
 ConstantBuffer<ClusterVisConstants> CBuffer : register(b0);
-
-ByteAddressBuffer DecalClusterBuffer : register(t0);
-ByteAddressBuffer SpotLightClusterBuffer : register(t1);
 
 // ================================================================================================
 // Pixel shader for visualizing decal/light counts from an overhead view of the frustum
 // ================================================================================================
 float4 ClusterVisualizerPS(in float4 PositionSS : SV_Position, in float2 TexCoord : TEXCOORD) : SV_Target0
 {
+    ByteAddressBuffer decalClusterBuffer = RawBufferTable[CBuffer.DecalClusterBufferIdx];
+    ByteAddressBuffer spotLightClusterBuffer = RawBufferTable[CBuffer.SpotLightClusterBufferIdx];
+
     float3 viewPos = lerp(CBuffer.ViewMin, CBuffer.ViewMax, float3(TexCoord.x, 0.5f, 1.0f - TexCoord.y));
     float4 projectedPos = mul(float4(viewPos, 1.0f), CBuffer.Projection);
     projectedPos.xyz /= projectedPos.w;
@@ -62,7 +66,7 @@ float4 ClusterVisualizerPS(in float4 PositionSS : SV_Position, in float2 TexCoor
         [unroll]
         for(uint elemIdx = 0; elemIdx < SpotLightElementsPerCluster; ++elemIdx)
         {
-            uint clusterElemMask = SpotLightClusterBuffer.Load((clusterOffset + elemIdx) * 4);
+            uint clusterElemMask = spotLightClusterBuffer.Load((clusterOffset + elemIdx) * 4);
             numLights += countbits(clusterElemMask);
         }
 
@@ -76,7 +80,7 @@ float4 ClusterVisualizerPS(in float4 PositionSS : SV_Position, in float2 TexCoor
         [unroll]
         for(uint elemIdx = 0; elemIdx < DecalElementsPerCluster; ++elemIdx)
         {
-            uint clusterElemMask = DecalClusterBuffer.Load((clusterOffset + elemIdx) * 4);
+            uint clusterElemMask = decalClusterBuffer.Load((clusterOffset + elemIdx) * 4);
             numDecals += countbits(clusterElemMask);
         }
 

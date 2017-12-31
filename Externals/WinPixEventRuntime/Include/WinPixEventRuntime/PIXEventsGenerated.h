@@ -1,9 +1,3 @@
-//
-// This file was copied from //depot/rs_xbox_dev_flight/xbox/drivers/Graphics/Pix3/PixEvt/inc/PIXEventsGenerated.h#6
-//
-// To refresh: run 'UpdateFromXbox -latest'
-//
-
 //This is a generated file.
 #pragma once
 

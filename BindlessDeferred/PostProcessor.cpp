@@ -19,11 +19,11 @@ void PostProcessor::Initialize()
     helper.Initialize();
 
     // Load the shaders
-    toneMap = CompileFromFile(L"PostProcessing.hlsl", "ToneMap", ShaderType::Pixel, ShaderProfile::SM51);
-    scale = CompileFromFile(L"PostProcessing.hlsl", "Scale", ShaderType::Pixel, ShaderProfile::SM51);
-    blurH = CompileFromFile(L"PostProcessing.hlsl", "BlurH", ShaderType::Pixel, ShaderProfile::SM51);
-    blurV = CompileFromFile(L"PostProcessing.hlsl", "BlurV", ShaderType::Pixel, ShaderProfile::SM51);
-    bloom = CompileFromFile(L"PostProcessing.hlsl", "Bloom", ShaderType::Pixel, ShaderProfile::SM51);
+    toneMap = CompileFromFile(L"PostProcessing.hlsl", "ToneMap", ShaderType::Pixel);
+    scale = CompileFromFile(L"PostProcessing.hlsl", "Scale", ShaderType::Pixel);
+    blurH = CompileFromFile(L"PostProcessing.hlsl", "BlurH", ShaderType::Pixel);
+    blurV = CompileFromFile(L"PostProcessing.hlsl", "BlurV", ShaderType::Pixel);
+    bloom = CompileFromFile(L"PostProcessing.hlsl", "Bloom", ShaderType::Pixel);
 }
 
 void PostProcessor::Shutdown()
@@ -47,7 +47,7 @@ void PostProcessor::Render(ID3D12GraphicsCommandList* cmdList, const RenderTextu
     TempRenderTarget* bloomTarget = Bloom(cmdList, input);
 
     // Apply tone mapping
-    D3D12_CPU_DESCRIPTOR_HANDLE inputs[2] = { input.SRV(), bloomTarget->RT.SRV() };
+    uint32 inputs[2] = { input.SRV(), bloomTarget->RT.SRV() };
     const RenderTexture* outputs[1] = { &output };
     helper.PostProcess(toneMap, "Tone Mapping", inputs, ArraySize_(inputs), outputs, ArraySize_(outputs));
 

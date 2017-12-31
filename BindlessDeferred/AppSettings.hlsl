@@ -19,6 +19,7 @@ struct AppSettings_Layout
     bool ShowDecalCounts;
     bool ShowMSAAMask;
     bool ShowUVGradients;
+    bool AnimateLightIntensity;
 };
 
 ConstantBuffer<AppSettings_Layout> AppSettings : register(b12);

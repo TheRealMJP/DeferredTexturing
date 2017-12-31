@@ -32,6 +32,10 @@ struct ClusterConstants
     uint InstanceOffset;
     uint NumLights;
     uint NumDecals;
+
+    uint BoundsBufferIdx;
+    uint VertexBufferIdx;
+    uint InstanceBufferIdx;
 };
 
 ConstantBuffer<ClusterConstants> CBuffer : register(b0);
@@ -39,9 +43,9 @@ ConstantBuffer<ClusterConstants> CBuffer : register(b0);
 //=================================================================================================
 // Resources
 //=================================================================================================
-StructuredBuffer<ClusterBounds> BoundsBuffer : register(t0);
-StructuredBuffer<float3> VertexBuffer : register(t1);
-StructuredBuffer<uint> InstanceBuffer : register(t2);
+StructuredBuffer<ClusterBounds> BoundsBuffers[] : register(t0, space100);
+StructuredBuffer<float3> VertexBuffers[] : register(t0, space101);
+StructuredBuffer<uint> InstanceBuffers[] : register(t0, space102);
 
 RWByteAddressBuffer ClusterBuffer : register(u0);
 
@@ -54,10 +58,14 @@ struct VSOutput
 
 VSOutput ClusterVS(in uint VertexIdx : SV_VertexID, in uint InstanceIdx : SV_InstanceID)
 {
-    uint idx = InstanceBuffer[InstanceIdx + CBuffer.InstanceOffset];
-    ClusterBounds bounds = BoundsBuffer[idx];
+    StructuredBuffer<ClusterBounds> boundsBuffer = BoundsBuffers[CBuffer.BoundsBufferIdx];
+    StructuredBuffer<float3> vertexBuffer = VertexBuffers[CBuffer.VertexBufferIdx];
+    StructuredBuffer<uint> instanceBuffer = InstanceBuffers[CBuffer.InstanceBufferIdx];
 
-    float3 vtxPos = VertexBuffer[VertexIdx] * bounds.Scale;
+    uint idx = instanceBuffer[InstanceIdx + CBuffer.InstanceOffset];
+    ClusterBounds bounds = boundsBuffer[idx];
+
+    float3 vtxPos = vertexBuffer[VertexIdx] * bounds.Scale;
     vtxPos = QuatRotate(vtxPos, bounds.Orientation);
     vtxPos += bounds.Position;
 

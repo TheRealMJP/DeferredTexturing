@@ -40,10 +40,11 @@ struct Decal
     Quaternion Orientation;
     float3 Size;
     float3 Position;
-    uint Type;
+    uint AlbedoTexIdx;
+    uint NormalTexIdx;
 
     #if _WINDOWS
-        Decal() : Type(uint32(-1)) { }
+        Decal() : AlbedoTexIdx(uint32(-1)), NormalTexIdx(uint32(-1)) { }
     #endif
 };
 

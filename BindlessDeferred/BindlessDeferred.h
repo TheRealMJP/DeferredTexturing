@@ -61,7 +61,7 @@ protected:
     uint64 numIntersectingDecals = 0;
 
     Array<SpotLight> spotLights;
-    StructuredBuffer spotLightBuffer;
+    ConstantBuffer spotLightBuffer;
     StructuredBuffer spotLightBoundsBuffer;
     StructuredBuffer spotLightInstanceBuffer;
     RawBuffer spotLightClusterBuffer;
@@ -117,67 +117,6 @@ protected:
     ID3D12RootSignature* clusterVisRootSignature = nullptr;
     ID3D12PipelineState* clusterVisPSO = nullptr;
 
-    struct ClusterConstants
-    {
-        Float4x4 ViewProjection;
-        Float4x4 InvProjection;
-        float NearClip;
-        float FarClip;
-        float InvClipRange;
-        uint32 NumXTiles;
-        uint32 NumYTiles;
-        uint32 NumXYTiles;
-        uint32 ElementsPerCluster;
-        uint32 InstanceOffset;
-        uint32 NumLights;
-        uint32 NumDecals;
-    };
-
-    struct MSAAMaskConstants
-    {
-        uint32 NumXTiles;
-    };
-
-    struct DeferredConstants
-    {
-        Float4x4 InvViewProj;
-        Float4x4 Projection;
-        Float2 RTSize;
-        uint32 NumComputeTilesX;
-    };
-
-    struct PickingConstants
-    {
-        Float4x4 InverseViewProjection;
-        Uint2 PixelPos;
-        Float2 RTSize;
-    };
-
-    struct ClusterVisConstants
-    {
-        Float4x4 Projection;
-        Float3 ViewMin;
-        float NearClip;
-        Float3 ViewMax;
-        float InvClipRange;
-        Float2 DisplaySize;
-        uint32 NumXTiles;
-        uint32 NumXYTiles;
-    };
-
-    struct LightConstants
-    {
-        SpotLight Lights[AppSettings::MaxSpotLights];
-        Float4x4 ShadowMatrices[AppSettings::MaxSpotLights];
-    };
-
-    ConstantBuffer<ClusterConstants> clusterConstants;
-    ConstantBuffer<MSAAMaskConstants> msaaMaskConstants;
-    ConstantBuffer<DeferredConstants> deferredConstants;
-    ConstantBuffer<ShadingConstants> shadingConstants;
-    ConstantBuffer<PickingConstants> pickingConstants;
-    ConstantBuffer<ClusterVisConstants> clusterVisConstants;
-
     virtual void Initialize() override;
     virtual void Shutdown() override;
 
@@ -208,5 +147,5 @@ protected:
 
 public:
 
-    BindlessDeferred();
+    BindlessDeferred(const wchar* cmdLine);
 };

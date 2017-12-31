@@ -65,8 +65,9 @@ namespace AppSettings
     BoolSetting ShowClusterVisualizer;
     BoolSetting ShowMSAAMask;
     BoolSetting ShowUVGradients;
+    BoolSetting AnimateLightIntensity;
 
-    ConstantBuffer<AppSettingsCBuffer> CBuffer;
+    ConstantBuffer CBuffer;
     const uint32 CBufferRegister = 12;
 
     void Initialize()
@@ -104,7 +105,7 @@ namespace AppSettings
         GroundAlbedo.Initialize("GroundAlbedo", "Sun And Sky", "Ground Albedo", "Ground albedo color used for procedural sun and sky model", Float3(0.2500f, 0.2500f, 0.2500f), false, -340282300000000000000000000000000000000.0000f, 340282300000000000000000000000000000000.0000f, 0.0100f, ColorUnit::None);
         Settings.AddSetting(&GroundAlbedo);
 
-        MSAAMode.Initialize("MSAAMode", "Anti Aliasing", "MSAAMode", "MSAA mode to use for rendering", MSAAModes::MSAANone, 3, MSAAModesLabels);
+        MSAAMode.Initialize("MSAAMode", "Anti Aliasing", "MSAA Mode", "MSAA mode to use for rendering", MSAAModes::MSAANone, 3, MSAAModesLabels);
         Settings.AddSetting(&MSAAMode);
 
         CurrentScene.Initialize("CurrentScene", "Scene", "Current Scene", "", Scenes::Sponza, 1, ScenesLabels);
@@ -182,7 +183,14 @@ namespace AppSettings
         ShowUVGradients.Initialize("ShowUVGradients", "Debug", "Show UV Gradients", "Visualize the UV gradients used for mip selection", false);
         Settings.AddSetting(&ShowUVGradients);
 
-        CBuffer.Initialize(BufferLifetime::Temporary);
+        AnimateLightIntensity.Initialize("AnimateLightIntensity", "Debug", "Animate Light Intensity", "Modulates the light intensity to test buffer uploads", false);
+        Settings.AddSetting(&AnimateLightIntensity);
+
+        ConstantBufferInit cbInit;
+        cbInit.Size = sizeof(AppSettingsCBuffer);
+        cbInit.Dynamic = true;
+        cbInit.Name = L"AppSettings Constant Buffer";
+        CBuffer.Initialize(cbInit);
     }
 
     void Update(uint32 displayWidth, uint32 displayHeight, const Float4x4& viewMatrix)
@@ -193,27 +201,29 @@ namespace AppSettings
 
     void UpdateCBuffer()
     {
-        CBuffer.Data.EnableSun = EnableSun;
-        CBuffer.Data.SunAreaLightApproximation = SunAreaLightApproximation;
-        CBuffer.Data.SunSize = SunSize;
-        CBuffer.Data.SunDirection = SunDirection;
-        CBuffer.Data.MSAAMode = MSAAMode;
-        CBuffer.Data.RenderLights = RenderLights;
-        CBuffer.Data.RenderDecals = RenderDecals;
-        CBuffer.Data.RenderMode = RenderMode;
-        CBuffer.Data.Exposure = Exposure;
-        CBuffer.Data.BloomExposure = BloomExposure;
-        CBuffer.Data.BloomMagnitude = BloomMagnitude;
-        CBuffer.Data.BloomBlurSigma = BloomBlurSigma;
-        CBuffer.Data.EnableAlbedoMaps = EnableAlbedoMaps;
-        CBuffer.Data.EnableNormalMaps = EnableNormalMaps;
-        CBuffer.Data.EnableSpecular = EnableSpecular;
-        CBuffer.Data.ShowLightCounts = ShowLightCounts;
-        CBuffer.Data.ShowDecalCounts = ShowDecalCounts;
-        CBuffer.Data.ShowMSAAMask = ShowMSAAMask;
-        CBuffer.Data.ShowUVGradients = ShowUVGradients;
+        AppSettingsCBuffer cbData;
+        cbData.EnableSun = EnableSun;
+        cbData.SunAreaLightApproximation = SunAreaLightApproximation;
+        cbData.SunSize = SunSize;
+        cbData.SunDirection = SunDirection;
+        cbData.MSAAMode = MSAAMode;
+        cbData.RenderLights = RenderLights;
+        cbData.RenderDecals = RenderDecals;
+        cbData.RenderMode = RenderMode;
+        cbData.Exposure = Exposure;
+        cbData.BloomExposure = BloomExposure;
+        cbData.BloomMagnitude = BloomMagnitude;
+        cbData.BloomBlurSigma = BloomBlurSigma;
+        cbData.EnableAlbedoMaps = EnableAlbedoMaps;
+        cbData.EnableNormalMaps = EnableNormalMaps;
+        cbData.EnableSpecular = EnableSpecular;
+        cbData.ShowLightCounts = ShowLightCounts;
+        cbData.ShowDecalCounts = ShowDecalCounts;
+        cbData.ShowMSAAMask = ShowMSAAMask;
+        cbData.ShowUVGradients = ShowUVGradients;
+        cbData.AnimateLightIntensity = AnimateLightIntensity;
 
-        CBuffer.Upload();
+        CBuffer.MapAndSetData(cbData);
     }
     void BindCBufferGfx(ID3D12GraphicsCommandList* cmdList, uint32 rootParameter)
     {

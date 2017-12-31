@@ -37,27 +37,27 @@ struct MainPassData
     Decal CursorDecal;
     float CursorDecalIntensity = 0.0f;
     const RawBuffer* DecalClusterBuffer = nullptr;
-    const StructuredBuffer* SpotLightBuffer = nullptr;
+    const ConstantBuffer* SpotLightBuffer = nullptr;
     const RawBuffer* SpotLightClusterBuffer = nullptr;
 };
 
 struct ShadingConstants
 {
     Float4Align Float3 SunDirectionWS;
-    float CosSunAngularRadius;
+    float CosSunAngularRadius = 0.0f;
     Float4Align Float3 SunIrradiance;
-    float SinSunAngularRadius;
+    float SinSunAngularRadius = 0.0f;
     Float4Align Float3 CameraPosWS;
 
     Float4Align Float3 CursorDecalPos;
-    float CursorDecalIntensity;
+    float CursorDecalIntensity = 0.0f;
     Float4Align Quaternion CursorDecalOrientation;
     Float4Align Float3 CursorDecalSize;
-    uint32 CursorDecalType;
-    uint32 NumXTiles;
-    uint32 NumXYTiles;
-    float NearClip;
-    float FarClip;
+    uint32 CursorDecalTexIdx = uint32(-1);
+    uint32 NumXTiles = 0;
+    uint32 NumXYTiles = 0;
+    float NearClip = 0.0f;
+    float FarClip = 0.0f;
 
     Float4Align ShaderSH9Color SkySH;
 };
@@ -91,7 +91,7 @@ public:
     const DepthBuffer& SpotLightShadowMap() const { return spotLightShadowMap; }
     const Float4x4* SpotLightShadowMatrices() const { return spotLightShadowMatrices; }
     const StructuredBuffer& MaterialTextureIndicesBuffer() const { return materialTextureIndices; }
-    ConstantBuffer<SunShadowConstants>& SunShadowConstantBuffer() { return sunShadowConstants; }
+    const SunShadowConstants& SunShadowConstantData() { return sunShadowConstants; }
 
 protected:
 
@@ -124,18 +124,5 @@ protected:
     Array<uint32> meshDrawIndices;
     Array<float> meshZDepths;
 
-    // Constant buffers
-    struct MeshVSConstants
-    {
-        Float4Align Float4x4 World;
-        Float4Align Float4x4 View;
-        Float4Align Float4x4 WorldViewProjection;
-        float NearClip;
-        float FarClip;
-    };
-
-    ConstantBuffer<MeshVSConstants> meshVSConstants;
-    ConstantBuffer<ShadingConstants> meshPSConstants;
-    ConstantBuffer<SunShadowConstants> sunShadowConstants;
-
+    SunShadowConstants sunShadowConstants;
 };
