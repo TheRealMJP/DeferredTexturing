@@ -231,6 +231,8 @@
   <ItemGroup>
     <CustomBuild Include="..\Externals\DXCompiler\Bin\dxcompiler.dll">
       <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(ProjectDir)$(SampleFrameworkDir)Scripts\SoftCopy.bat %(FullPath) $(OutDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(ProjectDir)$(SampleFrameworkDir)Scripts\SoftCopy.bat %(FullPath) $(OutDir)%(Filename)%(Extension)</Command>
     </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

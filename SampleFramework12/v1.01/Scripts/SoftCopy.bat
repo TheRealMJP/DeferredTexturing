@@ -1,0 +1,1 @@
+IF EXIST %1 (copy %1 %2)
