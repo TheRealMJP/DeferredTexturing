@@ -316,8 +316,8 @@ static HRESULT CompileShaderDXC(const wchar* path, const D3D_SHADER_MACRO* defin
     operationResult->GetStatus(&hr);
     if(SUCCEEDED(hr))
         DXCall(operationResult->GetResult(reinterpret_cast<IDxcBlob**>(compiledShader)));
-    else
-        operationResult->GetErrorBuffer(reinterpret_cast<IDxcBlobEncoding**>(errorMessages));
+        
+    operationResult->GetErrorBuffer(reinterpret_cast<IDxcBlobEncoding**>(errorMessages));
 
     DX12::Release(operationResult);
     DX12::Release(includeHandler);
@@ -426,6 +426,10 @@ static ID3DBlob* CompileShader(const wchar* path, const char* functionName, Shad
         }
         else
         {
+            // Write out warnings
+            if(errorMessages != nullptr && errorMessages->GetBufferSize() > 0)                
+                WriteLog("Warning from shader '%ls' (%s): %s", path, functionName, errorMessages->GetBufferPointer());
+
             ID3DBlobPtr compressedShader;
 
             #if EnableShaderModel6_
