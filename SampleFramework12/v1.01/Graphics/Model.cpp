@@ -390,6 +390,35 @@ const char* Mesh::InputElementTypeString(InputElementType elemType)
 
 // == Model =======================================================================================
 
+// For some reason the roughness maps aren't coming through in the SHININESS channel after Assimp import. :(
+static const wchar_t* SponzaRoughnessMaps[] = {
+    L"Sponza_Thorn_roughness.png",
+    L"VasePlant_roughness.png",
+    L"VaseRound_roughness.png",
+    L"Background_Roughness.png",
+    L"Sponza_Bricks_a_Roughness.png",
+    L"Sponza_Arch_roughness.png",
+    L"Sponza_Ceiling_roughness.png",
+    L"Sponza_Column_a_roughness.png",
+    L"Sponza_Floor_roughness.png",
+    L"Sponza_Column_c_roughness.png",
+    L"Sponza_Details_roughness.png",
+    L"Sponza_Column_b_roughness.png",
+    nullptr,
+    L"Sponza_FlagPole_roughness.png",
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    L"ChainTexture_Roughness.png",
+    L"VaseHanging_roughness.png",
+    L"Vase_roughness.png",
+    L"Lion_Roughness.png",
+    L"Sponza_Roof_roughness.png"
+};
+
 void Model::CreateWithAssimp(const ModelLoadSettings& settings)
 {
     const wchar* filePath = settings.FilePath;
@@ -496,8 +525,12 @@ void Model::CreateWithAssimp(const ModelLoadSettings& settings)
            || mat.GetTexture(aiTextureType_HEIGHT, 0, &normalMapPath) == aiReturn_SUCCESS)
             material.TextureNames[uint64(MaterialTextures::Normal)] = GetFileName(AnsiToWString(normalMapPath.C_Str()).c_str());
 
-        if(mat.GetTexture(aiTextureType_SHININESS, 0, &roughnessMapPath) == aiReturn_SUCCESS)
-            material.TextureNames[uint64(MaterialTextures::Roughness)] = GetFileName(AnsiToWString(roughnessMapPath.C_Str()).c_str());
+        /*if(mat.GetTexture(aiTextureType_SHININESS, 0, &roughnessMapPath) == aiReturn_SUCCESS)
+            material.TextureNames[uint64(MaterialTextures::Roughness)] = GetFileName(AnsiToWString(roughnessMapPath.C_Str()).c_str());*/
+
+        // For some reason the roughness maps aren't coming through in the SHININESS channel after Assimp import. :(
+        if(SponzaRoughnessMaps[i] != nullptr)
+            material.TextureNames[uint64(MaterialTextures::Roughness)] = GetFileName(SponzaRoughnessMaps[i]);
 
         if(mat.GetTexture(aiTextureType_AMBIENT, 0, &metallicMapPath) == aiReturn_SUCCESS)
             material.TextureNames[uint64(MaterialTextures::Metallic)] = GetFileName(AnsiToWString(metallicMapPath.C_Str()).c_str());
