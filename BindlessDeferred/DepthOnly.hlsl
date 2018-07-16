@@ -13,9 +13,9 @@
 // ================================================================================================
 cbuffer VSConstants : register(b0)
 {
-    float4x4 World;
-	float4x4 View;
-    float4x4 WorldViewProjection;
+    row_major float4x4 World;
+	row_major float4x4 View;
+    row_major float4x4 WorldViewProjection;
 }
 
 // ================================================================================================
