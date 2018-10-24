@@ -1034,7 +1034,6 @@ void BindlessDeferred::CreateRenderTargets()
 void BindlessDeferred::CompileShadersTask(uint32 start, uint32 end, uint32 threadNum, void* args)
 {
     BindlessDeferred* app = (BindlessDeferred*)args;
-    const uint64 numMaterialTextures = app->currentModel->MaterialTextures().Count();
 
     for(uint32 i = start; i < end; ++i)
     {
@@ -1051,7 +1050,6 @@ void BindlessDeferred::CompileShadersTask(uint32 start, uint32 end, uint32 threa
         opts.Add("MSAA_", msaa);
         opts.Add("NumMSAASamples_", numMSAASamples);
         opts.Add("ShadePerSample_", perSample);
-        opts.Add("NumMaterialTextures_", uint32(numMaterialTextures));
         opts.Add("ComputeUVGradients_", computeUVGradients);
         app->deferredCS[msaaMode][computeUVGradients][perSample] = CompileFromFile(L"Deferred.hlsl", "DeferredCS", ShaderType::Compute, opts);
     }

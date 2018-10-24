@@ -115,7 +115,7 @@ void Initialize(D3D_FEATURE_LEVEL minFeatureLevel, uint32 adapterIdx)
         #endif
     #endif
 
-    #if EnableShaderModel6_
+    #if EnableShaderModel6_ && 0
         // Enable experimental shader models
         DXCall(D3D12EnableExperimentalFeatures(1, &D3D12ExperimentalShaderModels, nullptr, nullptr));
     #endif

@@ -21,4 +21,4 @@ sun/source/x64/
 *.suo
 *.vcproj.user
 
-DXCompiler
+DXCompiler/bin/dxcompiler.pdb
