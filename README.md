@@ -12,7 +12,7 @@ The repository contains a Visual Studio 2015 project and solution file that's re
 
 To move the camera, press the W/S/A/D/Q/E keys. The camera can also be rotated by right-clicking on the window and dragging the mouse. To place new decals, click the middle mouse button. Everything else is controlled through the in-app settings UI.
 
-# Notes About The Experimental Branch
+# Using the new DirectX Shader Compiler
 
-This branch features a new, experimental version of the sample framework that uses full bindless descriptor access for all SRV's. It also supports using the new [open-source HLSL compiler](https://github.com/Microsoft/DirectXShaderCompiler) with support for Shader Model 6.0. Usage of the new compiler is controlled by the "EnableShaderModel6_" macro that's defined in AppConfig.h. The compiler itself isn't included in this repo, so you'll need to build it yourself. Once you've built it, run SampleFramework12\v1.01\Scripts\CopyDXC.bat from the HLSL compiler command prompt to copy the necessary files into the "Externals" directory referenced by this project.
+This project supports using the new [open-source HLSL compiler](https://github.com/Microsoft/DirectXShaderCompiler) (also known as DXC), with support for Shader Model 6.0+. Usage of the new compiler is controlled by the "EnableShaderModel6_" macro that's defined in AppConfig.h. If you enable this flag, you'll want to make sure that you're on Windows 10 version 1803 or later to enable retail support for loading DXIL. If you're on an earlier Win10 version or an older driver, you may need to enable experimental feature support for D3D12ExperimentalShaderModels (see DX12.cpp for some code you can enable to do this).
 
