@@ -25,7 +25,7 @@ struct RenderTexture;
 const uint64 NumCascades = 4;
 const float MaxShadowFilterSize = 9.0f;
 
-struct SunShadowConstants
+struct SunShadowConstantsBase
 {
     Float4x4 ShadowMatrix;
     float CascadeSplits[NumCascades] = { };
@@ -38,6 +38,7 @@ struct EVSMConstants
     float PositiveExponent = 0.0f;
     float NegativeExponent = 0.0f;
     float LightBleedingReduction = 0.25f;
+    uint32 Padding = 0;
 };
 
 struct MSMConstants
@@ -45,18 +46,25 @@ struct MSMConstants
     float DepthBias = 0.0f;
     float MomentBias = 0.0003f;
     float LightBleedingReduction = 0.25f;
+    uint32 Padding = 0;
+};
+
+struct SunShadowConstantsDepthMap
+{
+    SunShadowConstantsBase Base;
+    uint32 Dummy[4] = { };
 };
 
 struct SunShadowConstantsEVSM
 {
-    SunShadowConstants Base;
+    SunShadowConstantsBase Base;
     EVSMConstants EVSM;
 };
 
 struct SunShadowConstantsMSM
 {
-    SunShadowConstants Base;
-    MSMConstants EVSM;
+    SunShadowConstantsBase Base;
+    MSMConstants MSM;
 };
 
 enum class ShadowMapMode : uint32
@@ -85,17 +93,20 @@ extern Float4x4 ShadowScaleOffsetMatrix;
 void Initialize(ShadowMapMode smMode, ShadowMSAAMode msaaMode);
 void Shutdown();
 
+void CreatePSOs();
+void DestroyPSOs();
+
 uint32 NumMSAASamples();
 DXGI_FORMAT SMFormat();
 
 void ConvertShadowMap(ID3D12GraphicsCommandList* cmdList, const DepthBuffer& depthMap, RenderTexture& smTarget,
                       uint32 arraySlice, RenderTexture& tempTarget, float filterSizeU, float filterSizeV,
-                      bool linearizeDepth, float nearClip, float farClip, const Float4x4& projection,
-                      float positiveExponent = 0.0f, float negativeExponent = 0.0f);
+                      bool32 linearizeDepth, float nearClip, float farClip, const Float4x4& projection,
+                      bool32 useCSConversion = false, bool32 use3x3Filter = true, float positiveExponent = 0.0f, float negativeExponent = 0.0f);
 
 extern Float4x4 ScaleOffsetMatrix;
 void PrepareCascades(const Float3& lightDir, uint64 shadowMapSize, bool stabilize, const Camera& camera,
-                     SunShadowConstants& constants, OrthographicCamera* cascadeCameras);
+                     SunShadowConstantsBase& constants, OrthographicCamera* cascadeCameras);
 
 };
 

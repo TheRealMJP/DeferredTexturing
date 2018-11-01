@@ -103,6 +103,7 @@ public class Settings
     const uint MaxSpotLights = 32;
     const uint SpotLightElementsPerCluster = MaxSpotLights / 32;
     const float SpotLightRange = 7.5f;
+    const float SpotShadowNearClip = 0.1f;
 
     const uint DeferredTileSize = 8;
     const uint DeferredTileMaskSize = (DeferredTileSize * DeferredTileSize) / 32;

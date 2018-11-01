@@ -48,6 +48,7 @@ static const uint DecalElementsPerCluster = 2;
 static const uint MaxSpotLights = 32;
 static const uint SpotLightElementsPerCluster = 1;
 static const float SpotLightRange = 7.5000f;
+static const float SpotShadowNearClip = 0.1000f;
 static const uint DeferredTileSize = 8;
 static const uint DeferredTileMaskSize = 2;
 static const float DeferredUVScale = 2.0000f;

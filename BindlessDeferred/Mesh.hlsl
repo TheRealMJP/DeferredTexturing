@@ -181,13 +181,16 @@ PSOutputForward PSForward(in PSInput input)
     shadingInput.ShadowCBuffer = ShadowCBuffer;
     shadingInput.LightCBuffer = LightCBuffer;
 
+    // The DXIL validator is complaining if we do this after the wave operations inside of ShadePixel
+    float3 gradients = abs(float3(ddx(input.UV), ddy(input.UV).x)) * 64.0f;
+
     Texture2DArray sunShadowMap = Tex2DArrayTable[SRVIndices.SunShadowMapIdx];
     Texture2DArray spotLightShadowMap = Tex2DArrayTable[SRVIndices.SpotLightShadowMapIdx];
 
     float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowMapSampler);
 
     if(AppSettings.ShowUVGradients)
-        shadingResult = abs(float3(ddx(input.UV), ddy(input.UV).x)) * 64.0f;
+        shadingResult = gradients;
 
     // The tangent frame can have arbitrary handedness, so we force it to be left-handed.
     // We don't pack the handedness bit for forward rendering, since the decal picking only

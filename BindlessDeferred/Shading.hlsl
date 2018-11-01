@@ -9,16 +9,12 @@
 //=================================================================================================
 
 // Options
-#define ShadowMapMode_ ShadowMapMode_DepthMap_
-
 #ifndef UseImplicitShadowDerivatives_
     #define UseImplicitShadowDerivatives_ 0
 #endif
 
-#define UseReceiverPlaneBias_ 1
-
-// Set this to zero to make compile times quicker
-#define UseGatherPCF_ 1
+#define ShadowMapMode_ 0
+#define UseGatherPCF_ 0
 
 #include <DescriptorTables.hlsl>
 #include <SH.hlsl>
@@ -110,8 +106,8 @@ float3 CalcLighting(in float3 normal, in float3 lightDir, in float3 peakIrradian
 // are passed directly to this function instead of through the ShadingInput struct in order to
 // work around incorrect behavior from the shader compiler
 //-------------------------------------------------------------------------------------------------
-float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
-                  in Texture2DArray SpotLightShadowMap, in SamplerComparisonState ShadowSampler)
+float3 ShadePixel(in ShadingInput input, in Texture2DArray sunShadowMap,
+                  in Texture2DArray spotLightShadowMap, in SamplerComparisonState shadowSampler)
 {
     float3 vtxNormalWS = input.TangentFrame._m20_m21_m22;
     float3 normalWS = vtxNormalWS;
@@ -168,6 +164,14 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
         {
             // Loop until we've processed every raised bit
             uint clusterElemMask = input.DecalClusterBuffer.Load((clusterOffset + elemIdx) * 4);
+
+            #if DXC_
+                // OR the cluster bitmask across the entire wave to force it to be wave-uniform.
+                // This can allow AMD hardware to use scalar loads and registers for data from the decal buffer.
+                clusterElemMask = WaveActiveBitOr(clusterElemMask);
+                clusterElemMask = WaveReadLaneFirst(clusterElemMask);
+            #endif
+
             while(clusterElemMask)
             {
                 uint bitIdx = firstbitlow(clusterElemMask);
@@ -251,16 +255,23 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
 
     if(AppSettings.EnableSun)
     {
+        float3 sunDirection = CBuffer.SunDirectionWS;
+
+        float2 shadowMapSize;
+        float numSlices;
+        sunShadowMap.GetDimensions(shadowMapSize.x, shadowMapSize.y, numSlices);
+
+        const float3 shadowPosOffset = GetShadowPosOffset(saturate(dot(vtxNormalWS, sunDirection)), vtxNormalWS, shadowMapSize.x);
+
         #if UseImplicitShadowDerivatives_
             // Forward path
-            float sunShadowVisibility = SunShadowVisibility(positionWS, depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer, 0);
+            float sunShadowVisibility = SunShadowVisibility(positionWS, depthVS, shadowPosOffset, 0.0f, sunShadowMap, shadowSampler, ShadowCBuffer);
         #else
             // Deferred path
             float sunShadowVisibility = SunShadowVisibility(positionWS, positionNeighborX, positionNeighborY,
-                                                            depthVS, SunShadowMap, ShadowSampler, ShadowCBuffer, 0);
+                                                            depthVS, shadowPosOffset, 0.0f, sunShadowMap, shadowSampler, ShadowCBuffer);
         #endif
 
-        float3 sunDirection = CBuffer.SunDirectionWS;
         if(AppSettings.SunAreaLightApproximation)
         {
             float3 D = CBuffer.SunDirectionWS;
@@ -279,6 +290,10 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
     uint numLights = 0;
     if(AppSettings.RenderLights)
     {
+        float2 shadowMapSize;
+        float numSlices;
+        spotLightShadowMap.GetDimensions(shadowMapSize.x, shadowMapSize.y, numSlices);
+
         uint clusterOffset = clusterIdx * SpotLightElementsPerCluster;
 
         // Loop over the number of 4-byte elements needed for each cluster
@@ -287,6 +302,14 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
         {
             // Loop until we've processed every raised bit
             uint clusterElemMask = input.SpotLightClusterBuffer.Load((clusterOffset + elemIdx) * 4);
+
+            #if DXC_
+                // OR the cluster bitmask across the entire wave to force it to be wave-uniform.
+                // This can allow AMD hardware to use scalar loads and registers for data from the light buffer.
+                clusterElemMask = WaveActiveBitOr(clusterElemMask);
+                clusterElemMask = WaveReadLaneFirst(clusterElemMask);
+            #endif
+
             while(clusterElemMask)
             {
                 uint bitIdx = firstbitlow(clusterElemMask);
@@ -307,10 +330,13 @@ float3 ShadePixel(in ShadingInput input, in Texture2DArray SunShadowMap,
                     falloff = (falloff * falloff) / (distanceToLight * distanceToLight + 1.0f);
                     float3 intensity = spotLight.Intensity * angularAttenuation * falloff;
 
+                    const float3 shadowPosOffset = GetShadowPosOffset(saturate(dot(vtxNormalWS, surfaceToLight)), vtxNormalWS, shadowMapSize.x);
+
                     // We have to use explicit gradients for spotlight shadows, since the looping/branching is non-uniform
                     float spotLightVisibility = SpotLightShadowVisibility(positionWS, positionNeighborX, positionNeighborY,
                                                                           input.LightCBuffer.ShadowMatrices[spotLightIdx],
-                                                                          spotLightIdx, SpotLightShadowMap, ShadowSampler, 0.0f, 0);
+                                                                          spotLightIdx, shadowPosOffset, spotLightShadowMap, shadowSampler,
+                                                                          float2(SpotShadowNearClip, spotLight.Range), ShadowCBuffer.Extra);
 
                     output += CalcLighting(normalWS, surfaceToLight, intensity, diffuseAlbedo, specularAlbedo,
                                            roughness, positionWS, CBuffer.CameraPosWS) * spotLightVisibility;

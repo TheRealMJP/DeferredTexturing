@@ -404,7 +404,7 @@ static ID3DBlob* CompileShader(const wchar* path, const char* functionName, Shad
         {
             if(errorMessages)
             {
-                wchar message[1024] = { 0 };
+                wchar message[1024 * 4] = { 0 };
                 char* blobdata = reinterpret_cast<char*>(errorMessages->GetBufferPointer());
 
                 MultiByteToWideChar(CP_ACP, 0, blobdata, static_cast<int>(errorMessages->GetBufferSize()), message, 1024);

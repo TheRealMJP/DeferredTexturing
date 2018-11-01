@@ -91,7 +91,7 @@ public:
     const DepthBuffer& SpotLightShadowMap() const { return spotLightShadowMap; }
     const Float4x4* SpotLightShadowMatrices() const { return spotLightShadowMatrices; }
     const StructuredBuffer& MaterialTextureIndicesBuffer() const { return materialTextureIndices; }
-    const SunShadowConstants& SunShadowConstantData() { return sunShadowConstants; }
+    const SunShadowConstantsDepthMap& SunShadowConstantData() { return sunShadowConstants; }
 
 protected:
 
@@ -124,5 +124,5 @@ protected:
     Array<uint32> meshDrawIndices;
     Array<float> meshZDepths;
 
-    SunShadowConstants sunShadowConstants;
+    SunShadowConstantsDepthMap sunShadowConstants;
 };

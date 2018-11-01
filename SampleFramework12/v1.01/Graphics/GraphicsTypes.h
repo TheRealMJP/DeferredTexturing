@@ -409,6 +409,7 @@ struct RenderTexture
     void Transition(ID3D12GraphicsCommandList* cmdList, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, uint64 mipLevel = uint64(-1), uint64 arraySlice = uint64(-1)) const;
     void MakeReadable(ID3D12GraphicsCommandList* cmdList, uint64 mipLevel = uint64(-1), uint64 arraySlice = uint64(-1)) const;
     void MakeWritable(ID3D12GraphicsCommandList* cmdList, uint64 mipLevel = uint64(-1), uint64 arraySlice = uint64(-1)) const;
+    void UAVBarrier(ID3D12GraphicsCommandList* cmdList) const;
 
     uint32 SRV() const { return Texture.SRV; }
     uint64 Width() const { return Texture.Width; }

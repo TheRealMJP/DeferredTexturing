@@ -2167,7 +2167,7 @@ void BindlessDeferred::RenderDeferred()
 
         DX12::BindTempConstantBuffer(cmdList, shadingConstants, DeferredParams_PSCBuffer, CmdListMode::Compute);
 
-        const SunShadowConstants& sunShadowConstants = meshRenderer.SunShadowConstantData();
+        const SunShadowConstantsDepthMap& sunShadowConstants = meshRenderer.SunShadowConstantData();
         DX12::BindTempConstantBuffer(cmdList, sunShadowConstants, DeferredParams_ShadowCBuffer, CmdListMode::Compute);
 
         spotLightBuffer.SetAsComputeRootParameter(cmdList, DeferredParams_LightCBuffer);

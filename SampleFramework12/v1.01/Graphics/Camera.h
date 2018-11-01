@@ -48,6 +48,7 @@ public:
     float NearClip() const { return nearZ; };
     float FarClip() const { return farZ; };
 
+
     Float3 Forward() const;
     Float3 Back() const;
     Float3 Up() const;
@@ -62,6 +63,8 @@ public:
     void SetNearClip(float newNearClip);
     void SetFarClip(float newFarClip);
     void SetProjection(const Float4x4& newProjection);
+
+    virtual bool IsOrthographic() const { return false; }
 };
 
 // Camera with an orthographic projection
@@ -90,6 +93,8 @@ public:
     void SetMinY(float minY);
     void SetMaxX(float maxX);
     void SetMaxY(float maxY);
+
+    bool IsOrthographic() const override { return true; }
 };
 
 // Camera with a perspective projection

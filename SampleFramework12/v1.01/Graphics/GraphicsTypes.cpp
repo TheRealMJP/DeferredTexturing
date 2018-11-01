@@ -1194,6 +1194,17 @@ void RenderTexture::MakeWritable(ID3D12GraphicsCommandList* cmdList, uint64 mipL
     DX12::TransitionResource(cmdList, Texture.Resource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, subResourceIdx);
 }
 
+void RenderTexture::UAVBarrier(ID3D12GraphicsCommandList* cmdList) const
+{
+    Assert_(Texture.Resource != nullptr);
+
+    D3D12_RESOURCE_BARRIER barrier = { };
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.UAV.pResource = Texture.Resource;
+    cmdList->ResourceBarrier(1, &barrier);
+}
+
 // == VolumeTexture ===============================================================================
 
 VolumeTexture::VolumeTexture()
