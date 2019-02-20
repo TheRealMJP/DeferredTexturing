@@ -184,6 +184,16 @@ enum ResolveRootParams : uint32
     NumResolveRootParams
 };
 
+enum SSAORootParams : uint32
+{
+    SSAOParams_StandardDescriptors,
+    SSAOParams_UAVDescriptors,
+    SSAOParams_CBuffer,
+    SSAOParams_AppSettings,
+
+    NumSSAORootParams
+};
+
 // Returns true if a sphere intersects a capped cone defined by a direction, height, and angle
 static bool SphereConeIntersection(const Float3& coneTip, const Float3& coneDir, float coneHeight,
                                    float coneAngle, const Float3& sphereCenter, float sphereRadius)
@@ -420,6 +430,8 @@ void BindlessDeferred::Initialize()
     std::wstring fullScreenTriPath = SampleFrameworkDir() + L"Shaders\\FullScreenTriangle.hlsl";
     fullScreenTriVS = CompileFromFile(fullScreenTriPath.c_str(), "FullScreenTriangleVS", ShaderType::Vertex);
 
+    ssaoCS = CompileFromFile(L"SSAO.hlsl", "ComputeSSAO", ShaderType::Compute);
+
     {
         // Clustering root signature
         D3D12_DESCRIPTOR_RANGE1 uavRanges[1] = {};
@@ -626,6 +638,48 @@ void BindlessDeferred::Initialize()
         cmdSignatureDesc.pArgumentDescs = argsDescs;
         DXCall(DX12::Device->CreateCommandSignature(&cmdSignatureDesc, nullptr, IID_PPV_ARGS(&deferredCmdSignature)));
     }
+
+    {
+        // SSAO root signature
+        D3D12_DESCRIPTOR_RANGE1 descriptorRanges[1] = {};
+        descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        descriptorRanges[0].NumDescriptors = 1;
+        descriptorRanges[0].BaseShaderRegister = 0;
+        descriptorRanges[0].RegisterSpace = 0;
+        descriptorRanges[0].OffsetInDescriptorsFromTableStart = 0;
+
+        D3D12_ROOT_PARAMETER1 rootParameters[NumMSAAMaskRootParams] = {};
+        rootParameters[SSAOParams_StandardDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[SSAOParams_StandardDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[SSAOParams_StandardDescriptors].DescriptorTable.pDescriptorRanges = DX12::StandardDescriptorRanges();
+        rootParameters[SSAOParams_StandardDescriptors].DescriptorTable.NumDescriptorRanges = DX12::NumStandardDescriptorRanges;
+
+        rootParameters[SSAOParams_UAVDescriptors].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameters[SSAOParams_UAVDescriptors].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[SSAOParams_UAVDescriptors].DescriptorTable.pDescriptorRanges = descriptorRanges;
+        rootParameters[SSAOParams_UAVDescriptors].DescriptorTable.NumDescriptorRanges = ArraySize_(descriptorRanges);
+
+        rootParameters[SSAOParams_CBuffer].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[SSAOParams_CBuffer].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[SSAOParams_CBuffer].Descriptor.RegisterSpace = 0;
+        rootParameters[SSAOParams_CBuffer].Descriptor.ShaderRegister = 0;
+        rootParameters[SSAOParams_CBuffer].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
+
+        rootParameters[SSAOParams_AppSettings].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameters[SSAOParams_AppSettings].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        rootParameters[SSAOParams_AppSettings].Descriptor.RegisterSpace = 0;
+        rootParameters[SSAOParams_AppSettings].Descriptor.ShaderRegister = AppSettings::CBufferRegister;
+        rootParameters[SSAOParams_AppSettings].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
+
+        D3D12_ROOT_SIGNATURE_DESC1 rootSignatureDesc = {};
+        rootSignatureDesc.NumParameters = ArraySize_(rootParameters);
+        rootSignatureDesc.pParameters = rootParameters;
+        rootSignatureDesc.NumStaticSamplers = 0;
+        rootSignatureDesc.pStaticSamplers = nullptr;
+        rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+        DX12::CreateRootSignature(&ssaoRootSignature, rootSignatureDesc);
+    }
 }
 
 void BindlessDeferred::Shutdown()
@@ -685,8 +739,11 @@ void BindlessDeferred::Shutdown()
     uvGradientsTarget.Shutdown();
     materialIDTarget.Shutdown();
     deferredMSAATarget.Shutdown();
+    ssaoTarget.Shutdown();
 
     DX12::Release(resolveRootSignature);
+
+    DX12::Release(ssaoRootSignature);
 }
 
 void BindlessDeferred::CreatePSOs()
@@ -741,6 +798,14 @@ void BindlessDeferred::CreatePSOs()
         clusterFrontFacePSO->SetName(L"Cluster Front-Face PSO");
         clusterBackFacePSO->SetName(L"Cluster Back-Face PSO");
         clusterIntersectingPSO->SetName(L"Cluster Intersecting PSO");
+    }
+
+    {
+        // SSAO PSO's
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = { };
+        psoDesc.CS = ssaoCS.ByteCode();
+        psoDesc.pRootSignature = ssaoRootSignature;
+        DXCall(DX12::Device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&ssaoPSO)));
     }
 
     const bool msaaEnabled = AppSettings::MSAAMode != MSAAModes::MSAANone;
@@ -836,6 +901,7 @@ void BindlessDeferred::DestroyPSOs()
     DX12::DeferredRelease(pickingPSOs[0]);
     DX12::DeferredRelease(pickingPSOs[1]);
     DX12::DeferredRelease(clusterVisPSO);
+    DX12::DeferredRelease(ssaoPSO);
     for(uint64 i = 0; i < ArraySize_(msaaMaskPSOs); ++i)
         DX12::DeferredRelease(msaaMaskPSOs[i]);
     for(uint64 i = 0; i < ArraySize_(deferredPSOs); ++i)
@@ -914,6 +980,19 @@ void BindlessDeferred::CreateRenderTargets()
         rtInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         rtInit.Name = L"Material ID Target";
         materialIDTarget.Initialize(rtInit);
+    }
+
+    {
+        RenderTextureInit rtInit;
+        rtInit.Width = width;
+        rtInit.Height = height;
+        rtInit.Format = DXGI_FORMAT_R16_UNORM;
+        rtInit.MSAASamples = 1;
+        rtInit.ArraySize = 1;
+        rtInit.CreateUAV = true;
+        rtInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        rtInit.Name = L"SSAO Target";
+        ssaoTarget.Initialize(rtInit);
     }
 
     if(NumSamples > 1)
@@ -1972,6 +2051,8 @@ void BindlessDeferred::RenderDeferred()
         cmdList->ResourceBarrier(numBarriers, barriers);
     }
 
+    RenderSSAO();
+
     const uint32 numComputeTilesX = uint32(AlignTo(mainTarget.Width(), AppSettings::DeferredTileSize) / AppSettings::DeferredTileSize);
     const uint32 numComputeTilesY = uint32(AlignTo(mainTarget.Height(), AppSettings::DeferredTileSize) / AppSettings::DeferredTileSize);
 
@@ -2195,6 +2276,7 @@ void BindlessDeferred::RenderDeferred()
             depthBuffer.SRV(),
             skyTargetSRV,
             msaaMaskBuffer.SRV,
+            ssaoTarget.SRV(),
         };
 
         DX12::BindTempConstantBuffer(cmdList, srvIndices, DeferredParams_SRVIndices, CmdListMode::Compute);
@@ -2266,6 +2348,43 @@ void BindlessDeferred::RenderDeferred()
 
         cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
     }
+}
+
+void BindlessDeferred::RenderSSAO()
+{
+    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+
+    PIXMarker marker(cmdList, "Render SSAO");
+
+    D3D12_RESOURCE_BARRIER barriers[7] = {};
+    barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[1].Transition.pResource = ssaoTarget.Resource();
+    barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barriers[1].Transition.Subresource = 0;
+
+    ssaoTarget.Transition(cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    cmdList->SetComputeRootSignature(ssaoRootSignature);
+    cmdList->SetPipelineState(ssaoPSO);
+
+    DX12::BindStandardDescriptorTable(cmdList, SSAOParams_StandardDescriptors, CmdListMode::Compute);
+
+    /*MSAAMaskConstants msaaMaskConstants;
+    msaaMaskConstants.NumXTiles = numComputeTilesX;
+    msaaMaskConstants.MaterialIDMapIdx = materialIDTarget.SRV();
+    msaaMaskConstants.UVMapIdx = uvTarget.SRV();
+    DX12::BindTempConstantBuffer(cmdList, msaaMaskConstants, SSAOParams_CBuffer, CmdListMode::Compute);*/
+
+    D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { ssaoTarget.UAV };
+    DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), SSAOParams_UAVDescriptors, CmdListMode::Compute);
+
+    AppSettings::BindCBufferCompute(cmdList, SSAOParams_AppSettings);
+
+    cmdList->Dispatch(DX12::DispatchSize(ssaoTarget.Width(), 8), DX12::DispatchSize(ssaoTarget.Height(), 8), 1);
+
+    ssaoTarget.Transition(cmdList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 }
 
 // Performs MSAA resolve with a full-screen pixel shader

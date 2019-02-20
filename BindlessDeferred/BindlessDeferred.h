@@ -49,6 +49,7 @@ protected:
     RenderTexture materialIDTarget;
     RenderTexture resolveTarget;
     RenderTexture deferredMSAATarget;
+    RenderTexture ssaoTarget;
     DepthBuffer depthBuffer;
 
     Texture decalTextures[AppSettings::NumDecalTextures];
@@ -117,6 +118,10 @@ protected:
     ID3D12RootSignature* clusterVisRootSignature = nullptr;
     ID3D12PipelineState* clusterVisPSO = nullptr;
 
+    CompiledShaderPtr ssaoCS;
+    ID3D12RootSignature* ssaoRootSignature = nullptr;
+    ID3D12PipelineState* ssaoPSO = nullptr;
+
     virtual void Initialize() override;
     virtual void Shutdown() override;
 
@@ -138,6 +143,7 @@ protected:
     void RenderClusters();
     void RenderForward();
     void RenderDeferred();
+    void RenderSSAO();
     void RenderResolve();
     void RenderPicking();
     void RenderClusterVisualizer();

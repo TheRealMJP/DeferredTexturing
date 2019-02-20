@@ -43,6 +43,7 @@ struct SRVIndexConstants
     uint DepthMapIdx;
     uint SkyMapIdx;
     uint MSAAMaskBufferIdx;
+    uint SSAOMapIdx;
 };
 
 ConstantBuffer<ShadingConstants> PSCBuffer : register(b0);
@@ -269,6 +270,10 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
 
     if(AppSettings.ShowUVGradients)
         shadingResult = abs(float3(uvDX, uvDY.x)) * 64.0f;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    Texture2D ssaoMap = Tex2DTable[SRVIndices.SSAOMapIdx];
+    shadingResult = ssaoMap[pixelPos].x * 64.0f;
 
     uint2 outputPos = pixelPos;
     #if ShadePerSample_
