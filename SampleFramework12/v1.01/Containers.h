@@ -133,6 +133,26 @@ public:
         for(uint64 i = 0; i < size; ++i)
             data[i] = value;
     }
+
+    T* begin()
+    {
+        return data;
+    }
+
+    T* end()
+    {
+        return data + size;
+    }
+
+    const T* begin() const
+    {
+        return data;
+    }
+
+    const T* end() const
+    {
+        return data + size;
+    }
 };
 
 template<typename T> class FixedList
@@ -306,6 +326,26 @@ public:
         for(uint64 i = 0; i < oldCount; ++i)
             array[i] = fillValue;
     }
+
+    T* begin()
+    {
+        return array.Data();
+    }
+
+    T* end()
+    {
+        return array.Data() + count;
+    }
+
+    const T* begin() const
+    {
+        return array.Data();
+    }
+
+    const T* end() const
+    {
+        return array.Data() + count;
+    }
 };
 
 template<typename T> class GrowableList
@@ -411,6 +451,15 @@ public:
         return count++;
     }
 
+    T& Add()
+    {
+        Reserve(count + 1);
+
+        const uint64 idx = count++;
+        new (&array[idx]) T;
+        return array[idx];
+    }
+
     void AddMultiple(T item, uint64 itemCount)
     {
         if(itemCount == 0)
@@ -487,6 +536,26 @@ public:
         RemoveAll();
         for (uint64 i = 0; i < oldCount; ++i)
             array[i] = fillValue;
+    }
+
+    T* begin()
+    {
+        return array.Data();
+    }
+
+    T* end()
+    {
+        return array.Data() + count;
+    }
+
+    const T* begin() const
+    {
+        return array.Data();
+    }
+
+    const T* end() const
+    {
+        return array.Data() + count;
     }
 };
 

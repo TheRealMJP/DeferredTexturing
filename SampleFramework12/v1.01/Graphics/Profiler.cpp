@@ -215,7 +215,7 @@ static void UpdateProfile(ProfileData& profile, uint64 profileIdx, bool drawText
     double maxTime = 0.0;
     double avgTime = 0.0;
     uint64 avgTimeSamples = 0;
-    for(UINT i = 0; i < ProfileData::FilterSize; ++i)
+    for(uint32 i = 0; i < ProfileData::FilterSize; ++i)
     {
         if(profile.TimeSamples[i] <= 0.0)
             continue;
@@ -239,7 +239,7 @@ void Profiler::EndFrame(uint32 displayWidth, uint32 displayHeight)
     const uint64* frameQueryData = nullptr;
     if(enableGPUProfiling)
     {
-        DX12::GfxQueue->GetTimestampFrequency(&gpuFrequency);
+        DX12::LastGfxCommandQueue()->GetTimestampFrequency(&gpuFrequency);
 
         const uint64* queryData = readbackBuffer.Map<uint64>();
         frameQueryData = queryData + (DX12::CurrFrameIdx * MaxProfiles * 2);

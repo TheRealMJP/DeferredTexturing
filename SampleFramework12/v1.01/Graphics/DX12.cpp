@@ -29,9 +29,7 @@ namespace SampleFramework12
 namespace DX12
 {
 
-ID3D12Device2* Device = nullptr;
-ID3D12GraphicsCommandList1* CmdList = nullptr;
-ID3D12CommandQueue* GfxQueue = nullptr;
+ID3D12Device5* Device = nullptr;
 D3D_FEATURE_LEVEL FeatureLevel = D3D_FEATURE_LEVEL_11_0;
 IDXGIFactory4* Factory = nullptr;
 IDXGIAdapter1* Adapter = nullptr;
@@ -40,14 +38,40 @@ uint64 CurrentCPUFrame = 0;
 uint64 CurrentGPUFrame = 0;
 uint64 CurrFrameIdx = 0;
 
+// Command list submission data
 static const uint64 NumCmdAllocators = RenderLatency;
 
-static ID3D12CommandAllocator* CmdAllocators[NumCmdAllocators] = { };
 static Fence FrameFence;
+static Array<Fence> ExtraFences;
+static Array<ID3D12CommandQueue*> Queues;
 
+struct CommandListData
+{
+    ID3D12GraphicsCommandList4* CmdList = nullptr;
+    ID3D12CommandAllocator* CmdAllocators[NumCmdAllocators] = { };
+    CmdListMode Mode = CmdListMode::Graphics;
+};
+
+struct CommandSubmission
+{
+    ID3D12CommandQueue* Queue = nullptr;
+    Array<ID3D12CommandList*> CmdLists;
+    Array<Fence*> WaitFences;
+    Fence* SignalFence = nullptr;
+};
+
+static Array<CommandListData> CommandLists;
+static Array<CommandSubmission> Submissions;
+
+static ID3D12GraphicsCommandList4* FirstGfxCmdList = nullptr;
+static ID3D12GraphicsCommandList4* LastGfxCmdList = nullptr;
+static ID3D12CommandQueue* LastGfxQueue = nullptr;
+
+// Deferred release
 static GrowableList<IUnknown*> DeferredReleases[RenderLatency];
 static bool ShuttingDown = false;
 
+// Deferred SRV creation
 struct DeferredSRVCreate
 {
     ID3D12Resource* Resource = nullptr;
@@ -57,6 +81,7 @@ struct DeferredSRVCreate
 
 static Array<DeferredSRVCreate> DeferredSRVCreates[RenderLatency];
 static volatile uint64 DeferredSRVCreateCount[RenderLatency] = { };
+
 
 static void ProcessDeferredReleases(uint64 frameIdx)
 {
@@ -81,6 +106,31 @@ static void ProcessDeferredSRVCreates(uint64 frameIdx)
     }
 
     DeferredSRVCreateCount[frameIdx] = 0;
+}
+
+static void CleanupSubmitResources()
+{
+    Submissions.Shutdown();
+
+    FirstGfxCmdList = nullptr;
+    LastGfxCmdList = nullptr;
+    LastGfxQueue = nullptr;
+
+    for(CommandListData& cmdList : CommandLists)
+    {
+        Release(cmdList.CmdList);
+        for(uint32 i = 0; i < NumCmdAllocators; ++i)
+            Release(cmdList.CmdAllocators[i]);
+    }
+    CommandLists.Shutdown();
+
+    for(ID3D12CommandQueue* queue : Queues)
+        Release(queue);
+    Queues.Shutdown();
+
+    for(Fence& fence : ExtraFences)
+        fence.Shutdown();
+    ExtraFences.Shutdown();
 }
 
 void Initialize(D3D_FEATURE_LEVEL minFeatureLevel, uint32 adapterIdx)
@@ -165,22 +215,7 @@ void Initialize(D3D_FEATURE_LEVEL minFeatureLevel, uint32 adapterIdx)
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
     #endif
 
-    for(uint64 i = 0; i < NumCmdAllocators; ++i)
-        DXCall(Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&CmdAllocators[i])));
-
-    DXCall(Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, CmdAllocators[0], nullptr, IID_PPV_ARGS(&CmdList)));
-    DXCall(CmdList->Close());
-    CmdList->SetName(L"Primary Graphics Command List");
-
-    D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-    queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    DXCall(Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&GfxQueue)));
-    GfxQueue->SetName(L"Main Gfx Queue");
-
     CurrFrameIdx = CurrentCPUFrame % NumCmdAllocators;
-    DXCall(CmdAllocators[CurrFrameIdx]->Reset());
-    DXCall(CmdList->Reset(CmdAllocators[CurrFrameIdx], nullptr));
 
     FrameFence.Init(0);
 
@@ -189,6 +224,27 @@ void Initialize(D3D_FEATURE_LEVEL minFeatureLevel, uint32 adapterIdx)
 
     Initialize_Helpers();
     Initialize_Upload();
+
+    // Create a default submission setup with a single graphics queue submission
+    SubmitConfig submitConfig;
+
+    submitConfig.Queues.Init(1);
+    CmdQueueConfig& queueConfig = submitConfig.Queues[0];
+    queueConfig.Mode = CmdListMode::Graphics;
+    queueConfig.Name = L"Primary Graphics Queue";
+
+    submitConfig.CmdLists.Init(1);
+    CmdListConfig& cmdListConfig = submitConfig.CmdLists[0];
+    cmdListConfig.Mode = CmdListMode::Graphics;
+    cmdListConfig.Name = L"Primary Graphics Command List";
+    cmdListConfig.AllocatorName = L"Primary Graphics Command Allocator";
+
+    submitConfig.Submissions.Init(1);
+    CmdSubmissionConfig& submissionConfig = submitConfig.Submissions[0];
+    submissionConfig.CmdListIndices.Init(1, 0);
+    submissionConfig.QueueIdx = 0;
+
+    SetSubmitConfig(submitConfig);
 }
 
 void Shutdown()
@@ -199,13 +255,10 @@ void Shutdown()
     for(uint64 i = 0; i < ArraySize_(DeferredReleases); ++i)
         ProcessDeferredReleases(i);
 
+    CleanupSubmitResources();
+
     FrameFence.Shutdown();
 
-    for(uint64 i = 0; i < RenderLatency; ++i)
-        Release(CmdAllocators[i]);
-
-    Release(CmdList);
-    Release(GfxQueue);
     Release(Factory);
     Release(Adapter);
 
@@ -238,19 +291,28 @@ void BeginFrame()
 {
     Assert_(Device);
 
-    SetDescriptorHeaps(CmdList);
+    for(CommandListData& cmdListData : CommandLists)
+        SetDescriptorHeaps(cmdListData.CmdList);
 }
 
 void EndFrame(IDXGISwapChain4* swapChain, uint32 syncIntervals)
 {
     Assert_(Device);
 
-    DXCall(CmdList->Close());
+    for(CommandListData& cmdListData : CommandLists)
+        DXCall(cmdListData.CmdList->Close());
 
-    EndFrame_Upload();
+    for(ID3D12CommandQueue* queue : Queues)
+        WaitOnResourceUploads(queue);
 
-    ID3D12CommandList* commandLists[] = { CmdList };
-    GfxQueue->ExecuteCommandLists(ArraySize_(commandLists), commandLists);
+    for(CommandSubmission& submission : Submissions)
+    {
+        // Fence wait here
+
+        submission.Queue->ExecuteCommandLists(uint32(submission.CmdLists.Size()), submission.CmdLists.Data());
+
+        // Fence signal here
+    }
 
     // Present the frame.
     if(swapChain)
@@ -259,7 +321,7 @@ void EndFrame(IDXGISwapChain4* swapChain, uint32 syncIntervals)
     ++CurrentCPUFrame;
 
     // Signal the fence with the current frame number, so that we can check back on it
-    FrameFence.Signal(GfxQueue, CurrentCPUFrame);
+    FrameFence.Signal(LastGfxQueue, CurrentCPUFrame);
 
     // Wait for the GPU to catch up before we stomp an executing command buffer
     const uint64 gpuLag = DX12::CurrentCPUFrame - DX12::CurrentGPUFrame;
@@ -274,10 +336,14 @@ void EndFrame(IDXGISwapChain4* swapChain, uint32 syncIntervals)
     CurrFrameIdx = DX12::CurrentCPUFrame % NumCmdAllocators;
 
     // Prepare the command buffers to be used for the next frame
-    DXCall(CmdAllocators[CurrFrameIdx]->Reset());
-    DXCall(CmdList->Reset(CmdAllocators[CurrFrameIdx], nullptr));
+    for(CommandListData& cmdListData : CommandLists)
+    {
+        DXCall(cmdListData.CmdAllocators[CurrFrameIdx]->Reset());
+        DXCall(cmdListData.CmdList->Reset(cmdListData.CmdAllocators[CurrFrameIdx], nullptr));
+    }
 
     EndFrame_Helpers();
+    EndFrame_Upload();
 
     // See if we have any deferred releases to process
     ProcessDeferredReleases(CurrFrameIdx);
@@ -304,6 +370,155 @@ void FlushGPU()
         ProcessDeferredReleases(frameIdx);
         ProcessDeferredSRVCreates(frameIdx);
     }
+}
+
+void SetSubmitConfig(const SubmitConfig& config)
+{
+    FlushGPU();
+
+    CleanupSubmitResources();
+
+    ExtraFences.Init(config.NumFences);
+    for(Fence fence : ExtraFences)
+        fence.Init(0);
+
+    {
+        // Create queues
+        const uint64 numQueues = config.Queues.Size();
+        Assert_(numQueues > 0);
+        Queues.Init(numQueues, nullptr);
+
+        uint64 numGfxQueues = 0;
+        for(uint64 queueIdx = 0; queueIdx < numQueues; ++queueIdx)
+        {
+            const CmdQueueConfig& queueConfig = config.Queues[queueIdx];
+
+            D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+            queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+            queueDesc.Type = queueConfig.Mode == CmdListMode::Graphics ? D3D12_COMMAND_LIST_TYPE_DIRECT : D3D12_COMMAND_LIST_TYPE_COMPUTE;
+            DXCall(Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&Queues[queueIdx])));
+
+            if(queueConfig.Name != nullptr)
+                Queues[queueIdx]->SetName(queueConfig.Name);
+
+            if(queueConfig.Mode == CmdListMode::Graphics)
+                ++numGfxQueues;
+        }
+
+        Assert_(numGfxQueues > 0);
+    }
+
+    {
+        // Create command lists
+        const uint64 numCmdLists = config.CmdLists.Size();
+        CommandLists.Init(numCmdLists);
+
+        uint64 numGfxCmdLists = 0;
+        for(uint64 cmdListIdx = 0; cmdListIdx < numCmdLists; ++cmdListIdx)
+        {
+            const CmdListConfig& cmdListConfig = config.CmdLists[cmdListIdx];
+            CommandListData& cmdListData = CommandLists[cmdListIdx];
+
+            cmdListData.Mode = cmdListConfig.Mode;
+            D3D12_COMMAND_LIST_TYPE cmdListType = cmdListConfig.Mode == CmdListMode::Graphics ? D3D12_COMMAND_LIST_TYPE_DIRECT : D3D12_COMMAND_LIST_TYPE_COMPUTE;
+
+            for(uint32 allocIdx = 0; allocIdx < NumCmdAllocators; ++allocIdx)
+            {
+                DXCall(Device->CreateCommandAllocator(cmdListType, IID_PPV_ARGS(&cmdListData.CmdAllocators[allocIdx])));
+                if(cmdListConfig.AllocatorName != nullptr)
+                {
+                    std::wstring nameStr = MakeString(L"%s (%u)", cmdListConfig.AllocatorName, allocIdx);
+                    cmdListData.CmdAllocators[allocIdx]->SetName(nameStr.c_str());
+                }
+            }
+
+            DXCall(Device->CreateCommandList(0, cmdListType, cmdListData.CmdAllocators[0], nullptr, IID_PPV_ARGS(&cmdListData.CmdList)));
+            DXCall(cmdListData.CmdList->Close());
+            if(cmdListConfig.Name != nullptr)
+                cmdListData.CmdList->SetName(cmdListConfig.Name);
+
+            DXCall(cmdListData.CmdAllocators[CurrFrameIdx]->Reset());
+            DXCall(cmdListData.CmdList->Reset(cmdListData.CmdAllocators[CurrFrameIdx], nullptr));
+
+            if(cmdListConfig.Mode == CmdListMode::Graphics)
+                ++numGfxCmdLists;
+        }
+
+        Assert_(numGfxCmdLists > 0);
+    }
+
+    {
+        // Prepare submissions
+        const uint64 numSubmissions = config.Submissions.Size();
+        Submissions.Init(numSubmissions);
+
+        for(uint64 submissionIdx = 0; submissionIdx < numSubmissions; ++submissionIdx)
+        {
+            const CmdSubmissionConfig& submissionConfig = config.Submissions[submissionIdx];
+            CommandSubmission& submission = Submissions[submissionIdx];
+
+            submission.Queue = Queues[submissionConfig.QueueIdx];
+            if(config.Queues[submissionConfig.QueueIdx].Mode == CmdListMode::Graphics)
+                LastGfxQueue = submission.Queue;
+
+            const uint64 numCmdLists = submissionConfig.CmdListIndices.Size();
+            Assert_(numCmdLists > 0);
+            submission.CmdLists.Init(numCmdLists, nullptr);
+
+            for(uint64 cmdListIdx = 0; cmdListIdx < numCmdLists; ++cmdListIdx)
+            {
+                const uint32 idx = submissionConfig.CmdListIndices[cmdListIdx];
+                submission.CmdLists[cmdListIdx] = CommandLists[idx].CmdList;
+
+                if(CommandLists[idx].Mode == CmdListMode::Graphics)
+                {
+                    if(FirstGfxCmdList == nullptr)
+                        FirstGfxCmdList = CommandLists[idx].CmdList;
+                    LastGfxCmdList = CommandLists[idx].CmdList;
+                }
+            }
+
+            const uint64 numWaitFences = submissionConfig.WaitFenceIndices.Size();
+            submission.WaitFences.Init(numWaitFences, nullptr);
+            for(uint64 waitFenceIdx = 0; waitFenceIdx < numWaitFences; ++waitFenceIdx)
+            {
+                const uint32 fenceIdx = submissionConfig.WaitFenceIndices[waitFenceIdx];
+                submission.WaitFences[waitFenceIdx] = &ExtraFences[fenceIdx];
+            }
+
+            if(submissionConfig.SignalFenceIdx != uint32(-1))
+                submission.SignalFence = &ExtraFences[submissionConfig.SignalFenceIdx];
+        }
+    }
+
+    Assert_(FirstGfxCmdList != nullptr);
+    Assert_(LastGfxCmdList != nullptr);
+    Assert_(LastGfxQueue!= nullptr);
+}
+
+ID3D12GraphicsCommandList4* CommandList(uint32 idx)
+{
+    return CommandLists[idx].CmdList;
+}
+
+ID3D12GraphicsCommandList4* FirstGfxCommandList()
+{
+    return FirstGfxCmdList;
+}
+
+ID3D12GraphicsCommandList4* LastGfxCommandList()
+{
+    return LastGfxCmdList;
+}
+
+ID3D12CommandQueue* CommandQueue(uint32 idx)
+{
+    return Queues[idx];
+}
+
+ID3D12CommandQueue* LastGfxCommandQueue()
+{
+    return LastGfxQueue;
 }
 
 void DeferredRelease_(IUnknown* resource)

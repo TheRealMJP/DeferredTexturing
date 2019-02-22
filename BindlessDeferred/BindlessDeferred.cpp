@@ -1362,7 +1362,7 @@ void BindlessDeferred::Update(const Timer& timer)
 
 void BindlessDeferred::Render(const Timer& timer)
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     CPUProfileBlock cpuProfileBlock("Render");
     ProfileBlock gpuProfileBlock(cmdList, "Render Total");
@@ -1652,7 +1652,7 @@ void BindlessDeferred::UpdateLights()
 
 void BindlessDeferred::RenderClusters()
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     PIXMarker marker(cmdList, "Cluster Update");
     ProfileBlock profileBlock(cmdList, "Cluster Update");
@@ -1800,7 +1800,7 @@ void BindlessDeferred::RenderClusters()
 
 void BindlessDeferred::RenderForward()
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     PIXMarker marker(cmdList, "Forward rendering");
 
@@ -1924,7 +1924,7 @@ void BindlessDeferred::RenderForward()
 
 void BindlessDeferred::RenderDeferred()
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     PIXMarker marker(cmdList, "Render Deferred");
 
@@ -2352,7 +2352,7 @@ void BindlessDeferred::RenderDeferred()
 
 void BindlessDeferred::RenderSSAO()
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     PIXMarker marker(cmdList, "Render SSAO");
 
@@ -2393,7 +2393,7 @@ void BindlessDeferred::RenderResolve()
     if(AppSettings::MSAAMode == MSAAModes::MSAANone)
         return;
 
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     PIXMarker pixMarker(cmdList, "MSAA Resolve");
     ProfileBlock profileBlock(cmdList, "MSAA Resolve");
@@ -2434,7 +2434,7 @@ void BindlessDeferred::RenderPicking()
     if(currMouseState.IsOverWindow == false || AppSettings::EnableDecalPicker == false)
         return;
 
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     PIXMarker pixMarker(cmdList, "Picking");
 
@@ -2470,7 +2470,7 @@ void BindlessDeferred::RenderClusterVisualizer()
     if(AppSettings::ShowClusterVisualizer == false)
         return;
 
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
 
     PIXMarker pixMarker(cmdList, "Cluster Visualizer");
 
@@ -2528,7 +2528,7 @@ void BindlessDeferred::RenderClusterVisualizer()
 
 void BindlessDeferred::RenderHUD(const Timer& timer)
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CmdList;
+    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
     PIXMarker pixMarker(cmdList, "HUD Pass");
 
     Float2 viewportSize;

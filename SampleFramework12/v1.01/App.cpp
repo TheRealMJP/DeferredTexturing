@@ -179,7 +179,7 @@ void App::Initialize_Internal()
     DX12::Initialize(minFeatureLevel, adapterIdx);
 
     window.SetClientArea(swapChain.Width(), swapChain.Height());
-    swapChain.Initialize(window);
+    swapChain.Initialize(window, DX12::LastGfxCommandQueue());
 
     if(showWindow)
         window.ShowWindow();
@@ -231,6 +231,14 @@ void App::Update_Internal()
     AppSettings::Update(displayWidth, displayHeight, appViewMatrix);
 
     Update(appTimer);
+
+    // If the last graphics queue changed, we need to re-create the swap chain
+    ID3D12CommandQueue* lastGfxQueue = DX12::LastGfxCommandQueue();
+    if(lastGfxQueue != swapChain.CommandQueue())
+    {
+        swapChain.Shutdown();
+        swapChain.Initialize(window, lastGfxQueue);
+    }
 }
 
 void App::Render_Internal()
@@ -244,7 +252,7 @@ void App::Render_Internal()
     AppSettings::UpdateCBuffer();
 
     DX12::BeginFrame();
-    swapChain.BeginFrame();
+    swapChain.BeginFrame(DX12::FirstGfxCommandList());
 
     Render(appTimer);
 
@@ -255,9 +263,11 @@ void App::Render_Internal()
 
     DrawLog();
 
-    ImGuiHelper::EndFrame(DX12::CmdList, swapChain.BackBuffer().RTV, displayWidth, displayHeight);
+    ID3D12GraphicsCommandList* lastCmdList = DX12::LastGfxCommandList();
 
-    swapChain.EndFrame();
+    ImGuiHelper::EndFrame(lastCmdList, swapChain.BackBuffer().RTV, displayWidth, displayHeight);
+
+    swapChain.EndFrame(lastCmdList);
 
     DX12::EndFrame(swapChain.D3DSwapChain(), swapChain.NumVSYNCIntervals());
 }

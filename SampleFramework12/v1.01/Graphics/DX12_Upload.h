@@ -42,6 +42,8 @@ void Shutdown_Upload();
 
 void EndFrame_Upload();
 
+void WaitOnResourceUploads(ID3D12CommandQueue* waitQueue);
+
 // Resource upload/init
 UploadContext ResourceUploadBegin(uint64 size);
 void ResourceUploadEnd(UploadContext& context);

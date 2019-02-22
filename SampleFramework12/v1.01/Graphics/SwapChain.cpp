@@ -53,7 +53,7 @@ SwapChain::~SwapChain()
     Shutdown();
 }
 
-void SwapChain::Initialize(HWND outputWindow)
+void SwapChain::Initialize(HWND outputWindow, ID3D12CommandQueue* queue_)
 {
     Shutdown();
 
@@ -82,12 +82,14 @@ void SwapChain::Initialize(HWND outputWindow)
                           DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
     IDXGISwapChain* tempSwapChain = nullptr;
-    DXCall(DX12::Factory->CreateSwapChain(DX12::GfxQueue, &swapChainDesc, &tempSwapChain));
+    DXCall(DX12::Factory->CreateSwapChain(queue_, &swapChainDesc, &tempSwapChain));
     DXCall(tempSwapChain->QueryInterface(IID_PPV_ARGS(&swapChain)));
     DX12::Release(tempSwapChain);
 
     backBufferIdx = swapChain->GetCurrentBackBufferIndex();
     waitableObject = swapChain->GetFrameLatencyWaitableObject();
+
+    queue = queue_;
 
     AfterReset();
 }
@@ -210,18 +212,18 @@ void SwapChain::Reset()
     AfterReset();
 }
 
-void SwapChain::BeginFrame()
+void SwapChain::BeginFrame(ID3D12GraphicsCommandList* cmdList)
 {
     backBufferIdx = swapChain->GetCurrentBackBufferIndex();
 
     // Indicate that the back buffer will be used as a render target.
-    DX12::TransitionResource(DX12::CmdList, backBuffers[backBufferIdx].Texture.Resource, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    DX12::TransitionResource(cmdList, backBuffers[backBufferIdx].Texture.Resource, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 }
 
-void SwapChain::EndFrame()
+void SwapChain::EndFrame(ID3D12GraphicsCommandList* cmdList)
 {
     // Indicate that the back buffer will now be used to present.
-    DX12::TransitionResource(DX12::CmdList, backBuffers[backBufferIdx].Texture.Resource, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    DX12::TransitionResource(cmdList, backBuffers[backBufferIdx].Texture.Resource, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 }
 
 }

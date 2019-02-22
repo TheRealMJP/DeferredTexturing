@@ -26,31 +26,32 @@ public:
     SwapChain();
     ~SwapChain();
 
-    void Initialize(HWND outputWindow);
+    void Initialize(HWND outputWindow, ID3D12CommandQueue* queue);
     void Shutdown();
     void Reset();
-    void BeginFrame();
-    void EndFrame();
+    void BeginFrame(ID3D12GraphicsCommandList* cmdList);
+    void EndFrame(ID3D12GraphicsCommandList* cmdList);
 
     // Getters
-    IDXGISwapChain4* D3DSwapChain() const { return swapChain; };
-    const RenderTexture& BackBuffer() const { return backBuffers[backBufferIdx]; };
+    IDXGISwapChain4* D3DSwapChain() const { return swapChain; }
+    const RenderTexture& BackBuffer() const { return backBuffers[backBufferIdx]; }
 
-    DXGI_FORMAT Format() const { return format; };
-    uint32 Width() const { return width; };
-    uint32 Height() const { return height; };
-    bool FullScreen() const { return fullScreen; };
-    bool VSYNCEnabled() const { return vsync; };
-    uint32 NumVSYNCIntervals() const { return vsync ? numVSYNCIntervals : 0; };
+    DXGI_FORMAT Format() const { return format; }
+    uint32 Width() const { return width; }
+    uint32 Height() const { return height; }
+    bool FullScreen() const { return fullScreen; }
+    bool VSYNCEnabled() const { return vsync; }
+    uint32 NumVSYNCIntervals() const { return vsync ? numVSYNCIntervals : 0; }
     HANDLE WaitableObject() const { return waitableObject; }
+    ID3D12CommandQueue* CommandQueue() const { return queue; }
 
     // Setters
-    void SetFormat(DXGI_FORMAT format_) { format = format_; };
-    void SetWidth(uint32 width_) { width = width_; };
-    void SetHeight(uint32 height_) { height = height_; };
-    void SetFullScreen(bool enabled) { fullScreen = enabled; };
-    void SetVSYNCEnabled(bool enabled) { vsync = enabled; };
-    void SetNumVSYNCIntervals(uint32 intervals) { numVSYNCIntervals = intervals; };
+    void SetFormat(DXGI_FORMAT format_) { format = format_; }
+    void SetWidth(uint32 width_) { width = width_; }
+    void SetHeight(uint32 height_) { height = height_; }
+    void SetFullScreen(bool enabled) { fullScreen = enabled; }
+    void SetVSYNCEnabled(bool enabled) { vsync = enabled; }
+    void SetNumVSYNCIntervals(uint32 intervals) { numVSYNCIntervals = intervals; }
 
 protected:
 
@@ -75,6 +76,8 @@ protected:
     bool vsync = true;
     DXGI_RATIONAL refreshRate = { };
     uint32 numVSYNCIntervals = 1;
+
+    ID3D12CommandQueue* queue = nullptr;
 };
 
 }

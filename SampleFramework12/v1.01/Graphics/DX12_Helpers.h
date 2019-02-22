@@ -70,12 +70,6 @@ enum class SamplerState : uint64
     NumValues
 };
 
-enum class CmdListMode : uint64
-{
-    Graphics = 0,
-    Compute,
-};
-
 struct TempDescriptorTable
 {
     D3D12_CPU_DESCRIPTOR_HANDLE CPUStart;

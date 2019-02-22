@@ -273,7 +273,7 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     Texture2D ssaoMap = Tex2DTable[SRVIndices.SSAOMapIdx];
-    shadingResult = ssaoMap[pixelPos].x * 64.0f;
+    // shadingResult = ssaoMap[pixelPos].x * 64.0f;
 
     uint2 outputPos = pixelPos;
     #if ShadePerSample_

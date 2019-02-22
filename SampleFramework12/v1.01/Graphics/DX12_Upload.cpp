@@ -332,17 +332,17 @@ void EndFrame_Upload()
         ReleaseSRWLockExclusive(&UploadSubmissionLock);
     }
 
-    {
-        AcquireSRWLockExclusive(&UploadQueueLock);
-
-        // Make sure to sync on any pending uploads
-        ClearFinishedUploads(0);
-        GfxQueue->Wait(UploadFence.D3DFence, UploadFenceValue);
-
-        ReleaseSRWLockExclusive(&UploadQueueLock);
-    }
-
     TempFrameUsed = 0;
+}
+
+void WaitOnResourceUploads(ID3D12CommandQueue* waitQueue)
+{
+    AcquireSRWLockExclusive(&UploadQueueLock);
+
+    // Make sure to sync on any pending uploads
+    waitQueue->Wait(UploadFence.D3DFence, UploadFenceValue);
+
+    ReleaseSRWLockExclusive(&UploadQueueLock);
 }
 
 UploadContext ResourceUploadBegin(uint64 size)
