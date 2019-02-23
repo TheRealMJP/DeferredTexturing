@@ -1039,6 +1039,10 @@ void Fence::Wait(uint64 fenceValue)
     }
 }
 
+void Fence::GPUWait(ID3D12CommandQueue* queue, uint64 fenceValue)
+{
+    DXCall(queue->Wait(D3DFence, fenceValue));
+}
 
 bool Fence::Signaled(uint64 fenceValue)
 {

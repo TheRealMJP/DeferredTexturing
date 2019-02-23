@@ -348,6 +348,7 @@ struct Fence
 
     void Signal(ID3D12CommandQueue* queue, uint64 fenceValue);
     void Wait(uint64 fenceValue);
+    void GPUWait(ID3D12CommandQueue* queue, uint64 fenceValue);
     bool Signaled(uint64 fenceValue);
     void Clear(uint64 fenceValue);
 };

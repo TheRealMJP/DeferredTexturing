@@ -305,20 +305,22 @@ void EndFrame(IDXGISwapChain4* swapChain, uint32 syncIntervals)
     for(ID3D12CommandQueue* queue : Queues)
         WaitOnResourceUploads(queue);
 
+    ++CurrentCPUFrame;
+
     for(CommandSubmission& submission : Submissions)
     {
-        // Fence wait here
+        for(Fence* waitFence : submission.WaitFences)
+            waitFence->GPUWait(submission.Queue, CurrentCPUFrame);
 
         submission.Queue->ExecuteCommandLists(uint32(submission.CmdLists.Size()), submission.CmdLists.Data());
 
-        // Fence signal here
+        if(submission.SignalFence != nullptr)
+            submission.SignalFence->Signal(submission.Queue, CurrentCPUFrame);
     }
 
     // Present the frame.
     if(swapChain)
         DXCall(swapChain->Present(syncIntervals, syncIntervals == 0 ? DXGI_PRESENT_ALLOW_TEARING : 0));
-
-    ++CurrentCPUFrame;
 
     // Signal the fence with the current frame number, so that we can check back on it
     FrameFence.Signal(LastGfxQueue, CurrentCPUFrame);
