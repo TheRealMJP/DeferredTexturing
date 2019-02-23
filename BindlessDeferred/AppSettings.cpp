@@ -15,12 +15,6 @@ static const char* ScenesLabels[] =
     "Sponza",
 };
 
-static const char* RenderModesLabels[] =
-{
-    "Clustered Forward",
-    "Deferred Texturing",
-};
-
 static const char* ClusterRasterizationModesLabels[] =
 {
     "Normal",
@@ -45,13 +39,13 @@ namespace AppSettings
     BoolSetting RenderDecals;
     Button ClearDecals;
     BoolSetting EnableDecalPicker;
-    RenderModesSetting RenderMode;
     BoolSetting DepthPrepass;
     BoolSetting SortByDepth;
     IntSetting MaxLightClamp;
     ClusterRasterizationModesSetting ClusterRasterizationMode;
     BoolSetting UseZGradientsForMSAAMask;
     BoolSetting ComputeUVGradients;
+    BoolSetting MultiQueueSubmit;
     FloatSetting Exposure;
     FloatSetting BloomExposure;
     FloatSetting BloomMagnitude;
@@ -107,6 +101,7 @@ namespace AppSettings
 
         MSAAMode.Initialize("MSAAMode", "Anti Aliasing", "MSAA Mode", "MSAA mode to use for rendering", MSAAModes::MSAANone, 3, MSAAModesLabels);
         Settings.AddSetting(&MSAAMode);
+        MSAAMode.SetVisible(false);
 
         CurrentScene.Initialize("CurrentScene", "Scene", "Current Scene", "", Scenes::Sponza, 1, ScenesLabels);
         Settings.AddSetting(&CurrentScene);
@@ -122,9 +117,6 @@ namespace AppSettings
 
         EnableDecalPicker.Initialize("EnableDecalPicker", "Scene", "Enable Decal Picker", "Enables or disables placing new decals with the mouse", true);
         Settings.AddSetting(&EnableDecalPicker);
-
-        RenderMode.Initialize("RenderMode", "Rendering", "Render Mode", "The rendering technique to use", RenderModes::DeferredTexturing, 2, RenderModesLabels);
-        Settings.AddSetting(&RenderMode);
 
         DepthPrepass.Initialize("DepthPrepass", "Rendering", "Depth Prepass", "Renders a depth prepass before the main pass or G-Buffer pass", false);
         Settings.AddSetting(&DepthPrepass);
@@ -143,6 +135,9 @@ namespace AppSettings
 
         ComputeUVGradients.Initialize("ComputeUVGradients", "Rendering", "Compute UV Gradients", "Choose whether to compute UV gradients for deferred rendering, or explicitly store them in the G-Buffer", false);
         Settings.AddSetting(&ComputeUVGradients);
+
+        MultiQueueSubmit.Initialize("MultiQueueSubmit", "Rendering", "Multi-Queue Submission", "If enabled, submit shadows and SSAO on multiple queues to execute simultaneously", true);
+        Settings.AddSetting(&MultiQueueSubmit);
 
         Exposure.Initialize("Exposure", "Post Processing", "Exposure", "Simple exposure value applied to the scene before tone mapping (uses log2 scale)", -14.0000f, -24.0000f, 24.0000f, 0.1000f, ConversionMode::None, 1.0000f);
         Settings.AddSetting(&Exposure);
@@ -209,7 +204,6 @@ namespace AppSettings
         cbData.MSAAMode = MSAAMode;
         cbData.RenderLights = RenderLights;
         cbData.RenderDecals = RenderDecals;
-        cbData.RenderMode = RenderMode;
         cbData.Exposure = Exposure;
         cbData.BloomExposure = BloomExposure;
         cbData.BloomMagnitude = BloomMagnitude;

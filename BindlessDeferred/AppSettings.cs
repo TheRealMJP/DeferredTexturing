@@ -15,15 +15,6 @@ enum MSAAModes
     MSAA4x,
 }
 
-enum RenderModes
-{
-    [EnumLabel("Clustered Forward")]
-    ClusteredForward = 0,
-
-    [EnumLabel("Deferred Texturing")]
-    DeferredTexturing,
-}
-
 enum ClusterRasterizationModes
 {
     Normal,
@@ -69,6 +60,7 @@ public class Settings
     {
         [HelpText("MSAA mode to use for rendering")]
         [DisplayName("MSAA Mode")]
+        [Visible(false)]
         MSAAModes MSAAMode = MSAAModes.MSAANone;
     }
 
@@ -113,9 +105,6 @@ public class Settings
     [ExpandGroup(true)]
     public class Rendering
     {
-        [HelpText("The rendering technique to use")]
-        RenderModes RenderMode = RenderModes.DeferredTexturing;
-
         [UseAsShaderConstant(false)]
         [HelpText("Renders a depth prepass before the main pass or G-Buffer pass")]
         bool DepthPrepass = false;
@@ -144,6 +133,11 @@ public class Settings
         [UseAsShaderConstant(false)]
         [HelpText("Choose whether to compute UV gradients for deferred rendering, or explicitly store them in the G-Buffer")]
         bool ComputeUVGradients = false;
+
+        [DisplayName("Multi-Queue Submission")]
+        [UseAsShaderConstant(false)]
+        [HelpText("If enabled, submit shadows and SSAO on multiple queues to execute simultaneously")]
+        bool MultiQueueSubmit = true;
     }
 
     [ExpandGroup(false)]

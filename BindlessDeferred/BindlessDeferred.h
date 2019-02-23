@@ -122,6 +122,11 @@ protected:
     ID3D12RootSignature* ssaoRootSignature = nullptr;
     ID3D12PipelineState* ssaoPSO = nullptr;
 
+    ID3D12GraphicsCommandList* gBufferCmdList = nullptr;
+    ID3D12GraphicsCommandList* shadowsCmdList = nullptr;
+    ID3D12GraphicsCommandList* ssaoCmdList = nullptr;
+    ID3D12GraphicsCommandList* finalCmdList = nullptr;
+
     virtual void Initialize() override;
     virtual void Shutdown() override;
 
@@ -141,7 +146,7 @@ protected:
     void UpdateLights();
 
     void RenderClusters();
-    void RenderForward();
+    void RenderGBuffer();
     void RenderDeferred();
     void RenderSSAO();
     void RenderResolve();

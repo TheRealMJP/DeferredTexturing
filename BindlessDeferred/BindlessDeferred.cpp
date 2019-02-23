@@ -1358,30 +1358,121 @@ void BindlessDeferred::Update(const Timer& timer)
         DestroyPSOs();
         CreatePSOs();
     }
+
+    if(AppSettings::MultiQueueSubmit.Changed() || DX12::CurrentCPUFrame == 0)
+    {
+        if(AppSettings::MultiQueueSubmit)
+        {
+            //                    +-------+
+            //                +-->+Shadows+---+
+            //                |   +-------+   |
+            // +--------------+               |  +--------------------------+
+            // |Render GBuffer|               +->+Shading/PostProcessing/HUD|
+            // +--------------+               |  +--------------------------+
+            //                |   +-------+   |
+            //                +-->+ SSAO  +---+
+            //                    +-------+
+
+
+            SubmitConfig submitConfig;
+            submitConfig.Queues.Init(2);
+            submitConfig.CmdLists.Init(4);
+            submitConfig.Submissions.Init(4);
+            submitConfig.NumFences = 2;
+
+            submitConfig.Queues[0].Mode = CmdListMode::Graphics;
+            submitConfig.Queues[0].Name= L"Graphics Queue";
+
+            submitConfig.Queues[1].Mode = CmdListMode::Compute;
+            submitConfig.Queues[1].Name = L"Compute Queue";
+
+            submitConfig.CmdLists[0].Mode = CmdListMode::Graphics;
+            submitConfig.CmdLists[0].Name = L"GBuffer Command List";
+            submitConfig.CmdLists[0].AllocatorName = L"GBuffer Command Allocator";
+
+            submitConfig.CmdLists[1].Mode = CmdListMode::Graphics;
+            submitConfig.CmdLists[1].Name = L"Shadows Command List";
+            submitConfig.CmdLists[1].AllocatorName = L"Shadows Command Allocator";
+
+            submitConfig.CmdLists[2].Mode = CmdListMode::Compute;
+            submitConfig.CmdLists[2].Name = L"SSAO Command List";
+            submitConfig.CmdLists[2].AllocatorName = L"SSAO Command Allocator";
+
+            submitConfig.CmdLists[3].Mode = CmdListMode::Graphics;
+            submitConfig.CmdLists[3].Name = L"Final Command List";
+            submitConfig.CmdLists[3].AllocatorName = L"Final Command Allocator";
+
+            submitConfig.Submissions[0].QueueIdx = 0;
+            submitConfig.Submissions[0].CmdListIndices.Init(1, 0);
+            submitConfig.Submissions[0].SignalFenceIdx = 0;
+
+            submitConfig.Submissions[1].QueueIdx = 0;
+            submitConfig.Submissions[1].CmdListIndices.Init(1, 1);
+
+            submitConfig.Submissions[2].QueueIdx = 1;
+            submitConfig.Submissions[2].CmdListIndices.Init(1, 2);
+            submitConfig.Submissions[2].WaitFenceIndices.Init(1, 0);
+            submitConfig.Submissions[2].SignalFenceIdx = 1;
+
+            submitConfig.Submissions[3].QueueIdx = 0;
+            submitConfig.Submissions[3].CmdListIndices.Init(1, 3);
+            submitConfig.Submissions[3].WaitFenceIndices.Init(1, 1);
+
+            DX12::SetSubmitConfig(submitConfig);
+
+            gBufferCmdList = DX12::CommandList(0);
+            shadowsCmdList = DX12::CommandList(1);
+            ssaoCmdList = DX12::CommandList(2);
+            finalCmdList = DX12::CommandList(3);
+        }
+        else
+        {
+            // Submit everything in one batch on a graphics queue
+            SubmitConfig submitConfig;
+            submitConfig.Queues.Init(1);
+            submitConfig.CmdLists.Init(1);
+            submitConfig.Submissions.Init(1);
+
+            submitConfig.Queues[0].Mode = CmdListMode::Graphics;
+            submitConfig.Queues[0].Name = L"Graphics Queue";
+
+            submitConfig.CmdLists[0].Mode = CmdListMode::Graphics;
+            submitConfig.CmdLists[0].Name = L"Graphics Command List";
+            submitConfig.CmdLists[0].AllocatorName = L"Graphics Command Allocator";
+
+            submitConfig.Submissions[0].CmdListIndices.Init(1, 0);
+            submitConfig.Submissions[0].QueueIdx = 0;
+
+            DX12::SetSubmitConfig(submitConfig);
+
+            gBufferCmdList = DX12::CommandList(0);
+            shadowsCmdList = DX12::CommandList(0);
+            ssaoCmdList = DX12::CommandList(0);
+            finalCmdList = DX12::CommandList(0);
+        }
+    }
 }
 
 void BindlessDeferred::Render(const Timer& timer)
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
-
     CPUProfileBlock cpuProfileBlock("Render");
-    ProfileBlock gpuProfileBlock(cmdList, "Render Total");
+    const uint64 gpuProfileIdx = Profiler::GlobalProfiler.StartProfile(gBufferCmdList, "Render Total");
 
     if(taskSet != nullptr)
     {
         // We're still waiting for shaders to compile, so print a message to the screen and skip the render loop
         D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { swapChain.BackBuffer().RTV };
-        cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
+        finalCmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
 
         const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        cmdList->ClearRenderTargetView(rtvHandles[0], clearColor, 0, nullptr);
+        finalCmdList->ClearRenderTargetView(rtvHandles[0], clearColor, 0, nullptr);
 
-        DX12::SetViewport(cmdList, swapChain.Width(), swapChain.Height());
+        DX12::SetViewport(finalCmdList, swapChain.Width(), swapChain.Height());
 
         Float2 viewportSize;
         viewportSize.x = float(swapChain.Width());
         viewportSize.y = float(swapChain.Height());
-        spriteRenderer.Begin(cmdList, viewportSize, SpriteFilterMode::Point, SpriteBlendMode::AlphaBlend);
+        spriteRenderer.Begin(finalCmdList, viewportSize, SpriteFilterMode::Point, SpriteBlendMode::AlphaBlend);
 
         wchar text[32] = L"Compiling Shaders...";
         uint32 numDots = uint32(Frac(timer.ElapsedSecondsF()) * 4.0f);
@@ -1389,20 +1480,46 @@ void BindlessDeferred::Render(const Timer& timer)
         Float2 textSize = font.MeasureText(text);
 
         Float2 textPos = (viewportSize * 0.5f) - (textSize * 0.5f);
-        spriteRenderer.RenderText(cmdList, font, text, textPos, Float4(1.0f, 1.0f, 1.0f, 1.0f));
+        spriteRenderer.RenderText(finalCmdList, font, text, textPos, Float4(1.0f, 1.0f, 1.0f, 1.0f));
 
         spriteRenderer.End();
+
+        Profiler::GlobalProfiler.EndProfile(finalCmdList, gpuProfileIdx);
 
         return;
     }
 
     RenderClusters();
 
-    if(AppSettings::EnableSun)
-        meshRenderer.RenderSunShadowMap(cmdList, camera);
+    RenderGBuffer();
 
-    if(AppSettings::RenderLights)
-        meshRenderer.RenderSpotLightShadowMap(cmdList, camera);
+    {
+        if(AppSettings::EnableSun)
+            meshRenderer.RenderSunShadowMap(shadowsCmdList, camera);
+
+        if(AppSettings::RenderLights)
+            meshRenderer.RenderSpotLightShadowMap(shadowsCmdList, camera);
+
+        {
+            // Sync on shadow map rendering
+            D3D12_RESOURCE_BARRIER barriers[2] = {};
+            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barriers[0].Transition.pResource = meshRenderer.SunShadowMap().Resource();
+            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barriers[1].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+            shadowsCmdList->ResourceBarrier(ArraySize_(barriers), barriers);
+        }
+    }
 
     {
         // Update the light constant buffer
@@ -1412,10 +1529,7 @@ void BindlessDeferred::Render(const Timer& timer)
         spotLightBuffer.MultiUpdateData(srcData, sizes, offsets, ArraySize_(srcData));
     }
 
-    if(AppSettings::RenderMode == RenderModes::ClusteredForward)
-        RenderForward();
-    else
-        RenderDeferred();
+    RenderDeferred();
 
     RenderPicking();
     RenderResolve();
@@ -1423,18 +1537,20 @@ void BindlessDeferred::Render(const Timer& timer)
     RenderTexture& finalRT = mainTarget.MSAASamples > 1 ? resolveTarget : mainTarget;
 
     {
-        ProfileBlock ppProfileBlock(cmdList, "Post Processing");
-        postProcessor.Render(cmdList, finalRT, swapChain.BackBuffer());
+        ProfileBlock ppProfileBlock(finalCmdList, "Post Processing");
+        postProcessor.Render(finalCmdList, finalRT, swapChain.BackBuffer());
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[1] = { swapChain.BackBuffer().RTV };
-    cmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
+    finalCmdList->OMSetRenderTargets(1, rtvHandles, false, nullptr);
 
     RenderClusterVisualizer();
 
-    DX12::SetViewport(cmdList, swapChain.Width(), swapChain.Height());
+    DX12::SetViewport(finalCmdList, swapChain.Width(), swapChain.Height());
 
     RenderHUD(timer);
+
+    Profiler::GlobalProfiler.EndProfile(finalCmdList, gpuProfileIdx);
 }
 
 void BindlessDeferred::UpdateDecals(const Timer& timer)
@@ -1652,7 +1768,7 @@ void BindlessDeferred::UpdateLights()
 
 void BindlessDeferred::RenderClusters()
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
+    ID3D12GraphicsCommandList* cmdList = gBufferCmdList;
 
     PIXMarker marker(cmdList, "Cluster Update");
     ProfileBlock profileBlock(cmdList, "Cluster Update");
@@ -1798,139 +1914,15 @@ void BindlessDeferred::RenderClusters()
     spotLightClusterBuffer.MakeReadable(cmdList);
 }
 
-void BindlessDeferred::RenderForward()
+void BindlessDeferred::RenderGBuffer()
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
+    ID3D12GraphicsCommandList* cmdList = gBufferCmdList;
 
-    PIXMarker marker(cmdList, "Forward rendering");
-
-    {
-        // Transition render targets and depth buffers back to a writable state, and sync on the shadow maps
-        D3D12_RESOURCE_BARRIER barriers[5] = {};
-        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[0].Transition.pResource = mainTarget.Resource();
-        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[0].Transition.Subresource = 0;
-
-        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[1].Transition.pResource = tangentFrameTarget.Resource();
-        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[1].Transition.Subresource = 0;
-
-        barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[2].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[2].Transition.pResource = depthBuffer.Resource();
-        barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
-        barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-        barriers[2].Transition.Subresource = 0;
-
-        barriers[3].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[3].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[3].Transition.pResource = meshRenderer.SunShadowMap().Resource();
-        barriers[3].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-        barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        barriers[3].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-        barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[4].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
-        barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-        barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        barriers[4].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-        cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
-    }
-
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2] = { mainTarget.RTV, tangentFrameTarget.RTV };
-    cmdList->OMSetRenderTargets(2, rtvHandles, false, &depthBuffer.DSV);
-
-    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    cmdList->ClearRenderTargetView(rtvHandles[0], clearColor, 0, nullptr);
-    cmdList->ClearRenderTargetView(rtvHandles[1], clearColor, 0, nullptr);
-    cmdList->ClearDepthStencilView(depthBuffer.DSV, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-
-    DX12::SetViewport(cmdList, mainTarget.Width(), mainTarget.Height());
-
-    if(AppSettings::DepthPrepass)
-        meshRenderer.RenderDepthPrepass(cmdList, camera);
-
-    {
-        ProfileBlock profileBlock(cmdList, "Forward Rendering Pass");
-
-        // Render the main forward pass
-        MainPassData mainPassData;
-        mainPassData.SkyCache = &skyCache;
-        mainPassData.DecalTextures = decalTextures;
-        mainPassData.DecalBuffer = &decalBuffer;
-        mainPassData.CursorDecal = cursorDecal;
-        mainPassData.CursorDecalIntensity = cursorDecalIntensity;
-        mainPassData.DecalClusterBuffer = &decalClusterBuffer;
-        mainPassData.SpotLightBuffer = &spotLightBuffer;
-        mainPassData.SpotLightClusterBuffer = &spotLightClusterBuffer;
-        meshRenderer.RenderMainPass(cmdList, camera, mainPassData);
-
-        cmdList->OMSetRenderTargets(1, rtvHandles, false, &depthBuffer.DSV);
-
-        // Render the sky
-        skybox.RenderSky(cmdList, camera.ViewMatrix(), camera.ProjectionMatrix(), skyCache, true);
-
-        {
-            // Make our targets readable again, which will force a sync point. Also transition
-            // the shadow maps back to their writable state
-            D3D12_RESOURCE_BARRIER barriers[5] = {};
-            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-            barriers[0].Transition.pResource = mainTarget.Resource();
-            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            barriers[0].Transition.Subresource = 0;
-
-            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-            barriers[1].Transition.pResource = tangentFrameTarget.Resource();
-            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            barriers[1].Transition.Subresource = 0;
-
-            barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barriers[2].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-            barriers[2].Transition.pResource = depthBuffer.Resource();
-            barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
-            barriers[2].Transition.Subresource = 0;
-
-            barriers[3].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barriers[3].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-            barriers[3].Transition.pResource = meshRenderer.SunShadowMap().Resource();
-            barriers[3].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            barriers[3].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-            barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-            barriers[4].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
-            barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            barriers[4].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-            cmdList->ResourceBarrier(ArraySize_(barriers), barriers);
-        }
-    }
-}
-
-void BindlessDeferred::RenderDeferred()
-{
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
-
-    PIXMarker marker(cmdList, "Render Deferred");
+    PIXMarker marker(cmdList, "Render G-Buffer");
 
     {
         // Transition our G-Buffer targets to a writable state, and sync on shadow map rendering
-        D3D12_RESOURCE_BARRIER barriers[7] = {};
+        D3D12_RESOURCE_BARRIER barriers[5] = {};
         barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
         barriers[0].Transition.pResource = depthBuffer.Resource();
@@ -1961,24 +1953,10 @@ void BindlessDeferred::RenderDeferred()
 
         barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[4].Transition.pResource = meshRenderer.SunShadowMap().Resource();
-        barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-        barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[4].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-        barriers[5].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[5].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[5].Transition.pResource = meshRenderer.SpotLightShadowMap().Resource();
-        barriers[5].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-        barriers[5].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[5].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-        barriers[6].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[6].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[6].Transition.pResource = uvGradientsTarget.Resource();
-        barriers[6].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[6].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[6].Transition.Subresource = 0;
+        barriers[4].Transition.pResource = uvGradientsTarget.Resource();
+        barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barriers[4].Transition.Subresource = 0;
 
         const uint32 numBarriers = AppSettings::ComputeUVGradients ? ArraySize_(barriers) - 1 : ArraySize_(barriers);
         cmdList->ResourceBarrier(numBarriers, barriers);
@@ -1999,59 +1977,57 @@ void BindlessDeferred::RenderDeferred()
 
     DX12::SetViewport(cmdList, mainTarget.Width(), mainTarget.Height());
 
-    /*if(AppSettings::DepthPrepass)
-        meshRenderer.RenderDepthPrepass(cmdList, camera);*/
+    meshRenderer.RenderGBuffer(cmdList, camera);
+
+    // Sync on G-Buffer wrrites
+    D3D12_RESOURCE_BARRIER barriers[5] = {};
+    barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[0].Transition.pResource = depthBuffer.Resource();
+    barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+    barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
+    barriers[0].Transition.Subresource = 0;
+
+    barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[1].Transition.pResource = tangentFrameTarget.Resource();
+    barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    barriers[1].Transition.Subresource = 0;
+
+    barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[2].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[2].Transition.pResource = uvTarget.Resource();
+    barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    barriers[2].Transition.Subresource = 0;
+
+    barriers[3].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[3].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[3].Transition.pResource = materialIDTarget.Resource();
+    barriers[3].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    barriers[3].Transition.Subresource = 0;
+
+    barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[4].Transition.pResource = uvGradientsTarget.Resource();
+    barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    barriers[4].Transition.Subresource = 0;
+
+    const uint32 numBarriers = AppSettings::ComputeUVGradients ? ArraySize_(barriers) - 1 : ArraySize_(barriers);
+    cmdList->ResourceBarrier(numBarriers, barriers);
+}
+
+void BindlessDeferred::RenderDeferred()
+{
+    ID3D12GraphicsCommandList* cmdList = finalCmdList;
+
+    PIXMarker marker(cmdList, "Render Deferred");
 
     const uint64 msaaMode = uint64(AppSettings::MSAAMode);
     const bool msaaEnabled = AppSettings::MSAAMode != MSAAModes::MSAANone;
-
-    {
-        // Render the G-Buffer, and sync
-        ProfileBlock profileBlock(cmdList, "G-Buffer Rendering");
-
-        meshRenderer.RenderGBuffer(cmdList, camera);
-
-        D3D12_RESOURCE_BARRIER barriers[5] = {};
-        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[0].Transition.pResource = depthBuffer.Resource();
-        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
-        barriers[0].Transition.Subresource = 0;
-
-        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[1].Transition.pResource = tangentFrameTarget.Resource();
-        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[1].Transition.Subresource = 0;
-
-        barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[2].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[2].Transition.pResource = uvTarget.Resource();
-        barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[2].Transition.Subresource = 0;
-
-        barriers[3].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[3].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[3].Transition.pResource = materialIDTarget.Resource();
-        barriers[3].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[3].Transition.Subresource = 0;
-
-        barriers[4].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[4].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barriers[4].Transition.pResource = uvGradientsTarget.Resource();
-        barriers[4].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[4].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[4].Transition.Subresource = 0;
-
-        const uint32 numBarriers = AppSettings::ComputeUVGradients ? ArraySize_(barriers) - 1 : ArraySize_(barriers);
-        cmdList->ResourceBarrier(numBarriers, barriers);
-    }
-
-    RenderSSAO();
 
     const uint32 numComputeTilesX = uint32(AlignTo(mainTarget.Width(), AppSettings::DeferredTileSize) / AppSettings::DeferredTileSize);
     const uint32 numComputeTilesY = uint32(AlignTo(mainTarget.Height(), AppSettings::DeferredTileSize) / AppSettings::DeferredTileSize);
@@ -2352,7 +2328,7 @@ void BindlessDeferred::RenderDeferred()
 
 void BindlessDeferred::RenderSSAO()
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
+    ID3D12GraphicsCommandList* cmdList = ssaoCmdList;
 
     PIXMarker marker(cmdList, "Render SSAO");
 
@@ -2393,7 +2369,7 @@ void BindlessDeferred::RenderResolve()
     if(AppSettings::MSAAMode == MSAAModes::MSAANone)
         return;
 
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
+    ID3D12GraphicsCommandList* cmdList = finalCmdList;
 
     PIXMarker pixMarker(cmdList, "MSAA Resolve");
     ProfileBlock profileBlock(cmdList, "MSAA Resolve");
@@ -2404,7 +2380,7 @@ void BindlessDeferred::RenderResolve()
     cmdList->OMSetRenderTargets(ArraySize_(rtvs), rtvs, false, nullptr);
     DX12::SetViewport(cmdList, resolveTarget.Width(), resolveTarget.Height());
 
-    const uint64 deferred = AppSettings::RenderMode == RenderModes::DeferredTexturing ? 1 : 0;
+    const uint64 deferred = 1;
     ID3D12PipelineState* pso = resolvePSOs[deferred];
 
     cmdList->SetGraphicsRootSignature(resolveRootSignature);
@@ -2434,7 +2410,7 @@ void BindlessDeferred::RenderPicking()
     if(currMouseState.IsOverWindow == false || AppSettings::EnableDecalPicker == false)
         return;
 
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
+    ID3D12GraphicsCommandList* cmdList = finalCmdList;
 
     PIXMarker pixMarker(cmdList, "Picking");
 
@@ -2470,7 +2446,7 @@ void BindlessDeferred::RenderClusterVisualizer()
     if(AppSettings::ShowClusterVisualizer == false)
         return;
 
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
+    ID3D12GraphicsCommandList* cmdList = finalCmdList;
 
     PIXMarker pixMarker(cmdList, "Cluster Visualizer");
 
@@ -2528,7 +2504,7 @@ void BindlessDeferred::RenderClusterVisualizer()
 
 void BindlessDeferred::RenderHUD(const Timer& timer)
 {
-    ID3D12GraphicsCommandList* cmdList = DX12::CommandList(0);
+    ID3D12GraphicsCommandList* cmdList = finalCmdList;
     PIXMarker pixMarker(cmdList, "HUD Pass");
 
     Float2 viewportSize;

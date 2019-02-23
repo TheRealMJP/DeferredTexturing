@@ -381,7 +381,7 @@ void SetSubmitConfig(const SubmitConfig& config)
     CleanupSubmitResources();
 
     ExtraFences.Init(config.NumFences);
-    for(Fence fence : ExtraFences)
+    for(Fence& fence : ExtraFences)
         fence.Init(0);
 
     {

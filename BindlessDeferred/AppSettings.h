@@ -26,16 +26,6 @@ enum class Scenes
 
 typedef EnumSettingT<Scenes> ScenesSetting;
 
-enum class RenderModes
-{
-    ClusteredForward = 0,
-    DeferredTexturing = 1,
-
-    NumValues
-};
-
-typedef EnumSettingT<RenderModes> RenderModesSetting;
-
 enum class ClusterRasterizationModes
 {
     Normal = 0,
@@ -77,13 +67,13 @@ namespace AppSettings
     extern BoolSetting RenderDecals;
     extern Button ClearDecals;
     extern BoolSetting EnableDecalPicker;
-    extern RenderModesSetting RenderMode;
     extern BoolSetting DepthPrepass;
     extern BoolSetting SortByDepth;
     extern IntSetting MaxLightClamp;
     extern ClusterRasterizationModesSetting ClusterRasterizationMode;
     extern BoolSetting UseZGradientsForMSAAMask;
     extern BoolSetting ComputeUVGradients;
+    extern BoolSetting MultiQueueSubmit;
     extern FloatSetting Exposure;
     extern FloatSetting BloomExposure;
     extern FloatSetting BloomMagnitude;
@@ -108,7 +98,6 @@ namespace AppSettings
         int32 MSAAMode;
         bool32 RenderLights;
         bool32 RenderDecals;
-        int32 RenderMode;
         float Exposure;
         float BloomExposure;
         float BloomMagnitude;
