@@ -123,6 +123,17 @@ struct ClusterVisConstants
     uint32 SpotLightClusterBufferIdx = uint32(-1);
 };
 
+struct SSAOConstants
+{
+    Float4x4 ViewProjection;
+    Float4x4 InvViewProjection;
+    Float2 TextureSize;
+
+    uint32 DepthMapIdx = uint32(-1);
+    uint32 TangentMapIdx = uint32(-1);
+    uint32 MaterialIDMapIdx = uint32(-1);
+};
+
 enum ClusterRootParams : uint32
 {
     ClusterParams_StandardDescriptors,
@@ -1529,6 +1540,8 @@ void BindlessDeferred::Render(const Timer& timer)
         spotLightBuffer.MultiUpdateData(srcData, sizes, offsets, ArraySize_(srcData));
     }
 
+    RenderSSAO();
+
     RenderDeferred();
 
     RenderPicking();
@@ -2331,6 +2344,7 @@ void BindlessDeferred::RenderSSAO()
     ID3D12GraphicsCommandList* cmdList = ssaoCmdList;
 
     PIXMarker marker(cmdList, "Render SSAO");
+    // ProfileBlock profileBlock(cmdList, "SSAO");
 
     D3D12_RESOURCE_BARRIER barriers[7] = {};
     barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -2347,11 +2361,15 @@ void BindlessDeferred::RenderSSAO()
 
     DX12::BindStandardDescriptorTable(cmdList, SSAOParams_StandardDescriptors, CmdListMode::Compute);
 
-    /*MSAAMaskConstants msaaMaskConstants;
-    msaaMaskConstants.NumXTiles = numComputeTilesX;
-    msaaMaskConstants.MaterialIDMapIdx = materialIDTarget.SRV();
-    msaaMaskConstants.UVMapIdx = uvTarget.SRV();
-    DX12::BindTempConstantBuffer(cmdList, msaaMaskConstants, SSAOParams_CBuffer, CmdListMode::Compute);*/
+    SSAOConstants constants;
+    constants.ViewProjection = camera.ViewProjectionMatrix();
+    constants.InvViewProjection = Float4x4::Invert(constants.ViewProjection);
+    constants.TextureSize = Float2(float(ssaoTarget.Width()), float(ssaoTarget.Height()));
+    constants.DepthMapIdx = depthBuffer.SRV();
+    constants.TangentMapIdx = tangentFrameTarget.SRV();
+    constants.MaterialIDMapIdx = materialIDTarget.SRV();
+
+    DX12::BindTempConstantBuffer(cmdList, constants, SSAOParams_CBuffer, CmdListMode::Compute);
 
     D3D12_CPU_DESCRIPTOR_HANDLE uavs[] = { ssaoTarget.UAV };
     DX12::BindTempDescriptorTable(cmdList, uavs, ArraySize_(uavs), SSAOParams_UAVDescriptors, CmdListMode::Compute);

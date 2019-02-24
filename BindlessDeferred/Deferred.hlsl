@@ -258,6 +258,9 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
 
     float3 shadingResult = ShadePixel(shadingInput, sunShadowMap, spotLightShadowMap, ShadowMapSampler);
 
+    Texture2D ssaoMap = Tex2DTable[SRVIndices.SSAOMapIdx];
+    shadingResult *= ssaoMap[pixelPos].x;
+
     #if MSAA_
         if(zw >= 1.0f)
             shadingResult = MSAALoad_(skyMap, pixelPos, sampleIdx).xyz;
@@ -265,15 +268,11 @@ void ShadeSample(in uint2 pixelPos, in uint sampleIdx, in uint numMSAASamples)
 
     #if ShadePerSample_
         if(AppSettings.ShowMSAAMask)
-            shadingResult = lerp(shadingResult, float3(0, 0.0f, 5.0f), 0.5f);;
+            shadingResult = lerp(shadingResult, float3(0, 0.0f, 5.0f), 0.5f);
     #endif
 
     if(AppSettings.ShowUVGradients)
         shadingResult = abs(float3(uvDX, uvDY.x)) * 64.0f;
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    Texture2D ssaoMap = Tex2DTable[SRVIndices.SSAOMapIdx];
-    // shadingResult = ssaoMap[pixelPos].x * 64.0f;
 
     uint2 outputPos = pixelPos;
     #if ShadePerSample_
