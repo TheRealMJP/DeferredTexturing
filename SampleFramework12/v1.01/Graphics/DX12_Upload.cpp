@@ -119,6 +119,10 @@ static void ClearFinishedUploads(uint64 flushCount)
             if(UploadBufferUsed == 0)
                 UploadBufferStart = 0;
         }
+        else
+        {
+            return;
+        }
     }
 }
 
