@@ -303,6 +303,9 @@
     <CustomBuild Include="..\Externals\DXCompiler\Bin\dxcompiler.dll">
       <Filter>SampleFramework12\External DLLs</Filter>
     </CustomBuild>
+    <CustomBuild Include="..\Externals\DXCompiler\Bin\dxil.dll">
+      <Filter>SampleFramework12\External DLLs</Filter>
+    </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="..\SampleFramework12\v1.01\sf12.natvis">

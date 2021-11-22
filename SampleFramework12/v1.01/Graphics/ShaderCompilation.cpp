@@ -300,6 +300,7 @@ static HRESULT CompileShaderDXC(const wchar* path, const D3D_SHADER_MACRO* defin
 
         #if Debug_
             L"/Zi",
+            L"/Qembed_debug",
         #endif
     };
 

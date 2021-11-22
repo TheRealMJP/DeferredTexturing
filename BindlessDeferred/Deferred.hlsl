@@ -308,7 +308,7 @@ void DeferredCS(in uint3 DispatchID : SV_DispatchThreadID, in uint GroupIndex : 
             // See if the pixel we're working on is an edge pixel
             const uint tileIdx = tilePos.y * DeferredCBuffer.NumComputeTilesX + tilePos.x;
             TileMSAAMask tileMask = msaaMaskBuffer[tileIdx];
-            const uint msaaEdge = tileMask.Masks[GroupIndex / 32] & (1 << (GroupIndex % 32));
+            const uint msaaEdge = tileMask.Masks[GroupIndex / 32] & (1u << (GroupIndex % 32));
             const uint numMSAASamples = msaaEdge ? NumMSAASamples_ : 1;
         #else
             const uint numMSAASamples = 1;

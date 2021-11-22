@@ -76,7 +76,7 @@ void MSAAMaskCS(in uint3 DispatchID : SV_DispatchThreadID, in uint GroupIndex : 
     GroupMemoryBarrierWithGroupSync();
 
     if(perSample)
-        InterlockedOr(GroupMask.Masks[GroupIndex / 32], 1 << (GroupIndex % 32));
+        InterlockedOr(GroupMask.Masks[GroupIndex / 32], 1u << (GroupIndex % 32));
 
     GroupMemoryBarrierWithGroupSync();
 
