@@ -439,7 +439,6 @@ void ConvertAndReadbackTexture(const Texture& texture, DXGI_FORMAT outputFormat,
     init.Format = outputFormat;
     init.NumElements = texture.Width * texture.Height * texture.ArraySize;
     init.CreateUAV = true;
-    init.InitialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
     FormattedBuffer convertBuffer;
     convertBuffer.Initialize(init);

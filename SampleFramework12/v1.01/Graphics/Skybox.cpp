@@ -322,7 +322,6 @@ void Skybox::Initialize()
     vbInit.Stride = sizeof(Float3);
     vbInit.NumElements = uint32(NumVertices);
     vbInit.InitData = verts;
-    vbInit.InitialState = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
     vbInit.Name = L"Skybox Vertex Buffer";
     vertexBuffer.Initialize(vbInit);
 
@@ -339,7 +338,6 @@ void Skybox::Initialize()
     FormattedBufferInit ibInit;
     ibInit.Format = DXGI_FORMAT_R16_UINT;
     ibInit.NumElements = uint32(NumIndices);
-    ibInit.InitialState = D3D12_RESOURCE_STATE_INDEX_BUFFER;
     ibInit.InitData = indices;
     ibInit.Name = L"SpriteRenderer Index Buffer";
     indexBuffer.Initialize(ibInit);

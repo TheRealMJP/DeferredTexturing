@@ -96,8 +96,7 @@ struct Buffer
     ~Buffer();
 
     void Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 cpuAccessible,
-                    bool32 allowUAV, const void* initData, D3D12_RESOURCE_STATES initialState,
-                    ID3D12Heap* heap, uint64 heapOffset, const wchar* name);
+                    bool32 allowUAV, const void* initData, ID3D12Heap* heap, uint64 heapOffset, const wchar* name);
     void Shutdown();
 
     MapResult Map();
@@ -132,7 +131,6 @@ struct ConstantBufferInit
     bool32 Dynamic = true;
     bool32 CPUAccessible = true;
     const void* InitData = nullptr;
-    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
     ID3D12Heap* Heap = nullptr;
     uint64 HeapOffset = 0;
     const wchar* Name = nullptr;
@@ -169,7 +167,6 @@ struct StructuredBufferInit
     bool32 Dynamic = false;
     bool32 CPUAccessible = false;
     const void* InitData = nullptr;
-    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_GENERIC_READ;
     ID3D12Heap* Heap = nullptr;
     uint64 HeapOffset = 0;
     const wchar* Name = nullptr;
@@ -222,7 +219,6 @@ struct FormattedBufferInit
     bool32 Dynamic = false;
     bool32 CPUAccessible = false;
     const void* InitData = nullptr;
-    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_GENERIC_READ;
     ID3D12Heap* Heap = nullptr;
     uint64 HeapOffset = 0;
     const wchar* Name = nullptr;
@@ -273,7 +269,6 @@ struct RawBufferInit
     bool32 Dynamic = false;
     bool32 CPUAccessible = false;
     const void* InitData = nullptr;
-    D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_GENERIC_READ;
     ID3D12Heap* Heap = nullptr;
     uint64 HeapOffset = 0;
     const wchar* Name = nullptr;

@@ -48,7 +48,6 @@ void SpriteRenderer::Initialize()
     FormattedBufferInit ibInit;
     ibInit.Format = DXGI_FORMAT_R16_UINT;
     ibInit.NumElements = ArraySize_(indices);
-    ibInit.InitialState = D3D12_RESOURCE_STATE_INDEX_BUFFER;
     ibInit.InitData = indices;
     ibInit.Name = L"SpriteRenderer Index Buffer";
     indexBuffer.Initialize(ibInit);

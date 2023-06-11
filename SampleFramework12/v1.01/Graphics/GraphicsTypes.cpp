@@ -228,8 +228,8 @@ Buffer::~Buffer()
 }
 
 void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 cpuAccessible,
-                        bool32 allowUAV, const void* initData, D3D12_RESOURCE_STATES initialState,
-                        ID3D12Heap* heap, uint64 heapOffset, const wchar* name)
+                        bool32 allowUAV, const void* initData, ID3D12Heap* heap, uint64 heapOffset,
+                        const wchar* name)
 {
     Assert_(size > 0);
     Assert_(alignment > 0);
@@ -261,23 +261,18 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 cp
     resourceDesc.Alignment = 0;
 
     const D3D12_HEAP_PROPERTIES* heapProps = cpuAccessible ? DX12::GetUploadHeapProps() : DX12::GetDefaultHeapProps();
-    D3D12_RESOURCE_STATES resourceState = initialState;
-    if(cpuAccessible)
-        resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
-    else if(initData)
-        resourceState = D3D12_RESOURCE_STATE_COMMON;
 
     if(heap)
     {
         Heap = heap;
         HeapOffset = heapOffset;
-        DXCall(DX12::Device->CreatePlacedResource(heap, heapOffset, &resourceDesc, resourceState,
+        DXCall(DX12::Device->CreatePlacedResource(heap, heapOffset, &resourceDesc, D3D12_RESOURCE_STATE_COMMON,
                                                     nullptr, IID_PPV_ARGS(&Resource)));
     }
     else
     {
         DXCall(DX12::Device->CreateCommittedResource(heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc,
-                                                        resourceState, nullptr, IID_PPV_ARGS(&Resource)));
+                                                        D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&Resource)));
     }
 
     if(name)
@@ -440,7 +435,7 @@ ConstantBuffer::~ConstantBuffer()
 void ConstantBuffer::Initialize(const ConstantBufferInit& init)
 {
     InternalBuffer.Initialize(init.Size, DX12::ConstantBufferAlignment, init.Dynamic, init.CPUAccessible,
-                              false, init.InitData, init.InitialState, init.Heap, init.HeapOffset, init.Name);
+                              false, init.InitData, init.Heap, init.HeapOffset, init.Name);
 }
 
 void ConstantBuffer::Shutdown()
@@ -506,7 +501,7 @@ void StructuredBuffer::Initialize(const StructuredBufferInit& init)
     NumElements = init.NumElements;
 
     InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.CPUAccessible, init.CreateUAV,
-                              init.InitData, init.InitialState, init.Heap, init.HeapOffset, init.Name);
+                              init.InitData, init.Heap, init.HeapOffset, init.Name);
     GPUAddress = InternalBuffer.GPUAddress;
 
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
@@ -537,7 +532,7 @@ void StructuredBuffer::Initialize(const StructuredBufferInit& init)
             resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
             resourceDesc.Alignment = 0;
             DXCall(DX12::Device->CreateCommittedResource(DX12::GetDefaultHeapProps(), D3D12_HEAP_FLAG_NONE, &resourceDesc,
-                                                         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&CounterResource)));
+                                                         D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&CounterResource)));
 
             counterRes = CounterResource;
 
@@ -699,7 +694,7 @@ void FormattedBuffer::Initialize(const FormattedBufferInit& init)
     Format = init.Format;
 
     InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.CPUAccessible, init.CreateUAV,
-                              init.InitData, init.InitialState, init.Heap, init.HeapOffset, init.Name);
+                              init.InitData, init.Heap, init.HeapOffset, init.Name);
     GPUAddress = InternalBuffer.GPUAddress;
 
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();
@@ -854,7 +849,7 @@ void RawBuffer::Initialize(const RawBufferInit& init)
     NumElements = init.NumElements;
 
     InternalBuffer.Initialize(Stride * NumElements, Stride, init.Dynamic, init.CPUAccessible, init.CreateUAV, init.InitData,
-                              init.InitialState, init.Heap, init.HeapOffset, init.Name);
+                              init.Heap, init.HeapOffset, init.Name);
     GPUAddress = InternalBuffer.GPUAddress;
 
     PersistentDescriptorAlloc srvAlloc = DX12::SRVDescriptorHeap.AllocatePersistent();

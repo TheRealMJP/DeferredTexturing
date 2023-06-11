@@ -276,7 +276,6 @@ void BindlessDeferred::Initialize()
         sbInit.NumElements = AppSettings::MaxDecals;
         sbInit.Dynamic = true;
         sbInit.CPUAccessible = false;
-        sbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
         decalBuffer.Initialize(sbInit);
         decalBuffer.Resource()->SetName(L"Decal Buffer");
     }
@@ -313,7 +312,6 @@ void BindlessDeferred::Initialize()
         cbInit.Size = sizeof(LightConstants);
         cbInit.Dynamic = true;
         cbInit.CPUAccessible = false;
-        cbInit.InitialState = D3D12_RESOURCE_STATE_COMMON;
         cbInit.Name = L"Spot Light Buffer";
 
         spotLightBuffer.Initialize(cbInit);
@@ -327,7 +325,6 @@ void BindlessDeferred::Initialize()
 
         uint32 initData[3] = { 0, 1, 1 };
         sbInit.InitData = initData;
-        sbInit.InitialState = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
 
         nonMsaaArgsBuffer.Initialize(sbInit);
         msaaArgsBuffer.Initialize(sbInit);
@@ -1015,7 +1012,6 @@ void BindlessDeferred::CreateRenderTargets()
         sbInit.Stride = sizeof(uint32);
         sbInit.CreateUAV = true;
         sbInit.UseCounter = true;
-        sbInit.InitialState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         msaaTileBuffer.Initialize(sbInit);
         msaaTileBuffer.InternalBuffer.Resource->SetName(L"MSAA Tile Buffer");
 
