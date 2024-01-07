@@ -262,6 +262,10 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 cp
 
     const D3D12_HEAP_PROPERTIES* heapProps = cpuAccessible ? DX12::GetUploadHeapProps() : DX12::GetDefaultHeapProps();
 
+    D3D12_RESOURCE_STATES resourceState = D3D12_RESOURCE_STATE_COMMON;
+    if (cpuAccessible)
+      resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
+
     if(heap)
     {
         Heap = heap;
@@ -272,7 +276,7 @@ void Buffer::Initialize(uint64 size, uint64 alignment, bool32 dynamic, bool32 cp
     else
     {
         DXCall(DX12::Device->CreateCommittedResource(heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc,
-                                                        D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&Resource)));
+          resourceState, nullptr, IID_PPV_ARGS(&Resource)));
     }
 
     if(name)
