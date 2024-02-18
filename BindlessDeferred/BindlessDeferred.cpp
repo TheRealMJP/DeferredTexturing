@@ -1058,8 +1058,6 @@ void BindlessDeferred::InitializeScene()
     DX12::FlushGPU();
     meshRenderer.Initialize(currentModel);
 
-    const uint64 numMaterialTextures = currentModel->MaterialTextures().Count();
-
     camera.SetPosition(SceneCameraPositions[uint64(AppSettings::CurrentScene)]);
     camera.SetXRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].x);
     camera.SetYRotation(SceneCameraRotations[uint64(AppSettings::CurrentScene)].y);
@@ -1919,7 +1917,6 @@ void BindlessDeferred::RenderDeferred()
     /*if(AppSettings::DepthPrepass)
         meshRenderer.RenderDepthPrepass(cmdList, camera);*/
 
-    const uint64 msaaMode = uint64(AppSettings::MSAAMode);
     const bool msaaEnabled = AppSettings::MSAAMode != MSAAModes::MSAANone;
 
     {

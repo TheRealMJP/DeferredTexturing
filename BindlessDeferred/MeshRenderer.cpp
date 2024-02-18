@@ -199,8 +199,6 @@ void MeshRenderer::Initialize(const Model* model_)
         spotLightShadowMap.Initialize(dbInit);
     }
 
-    const uint64 numMaterialTextures = model->MaterialTextures().Count();
-
     {
         // Create a structured buffer containing texture indices per-material
         const Array<MeshMaterial>& materials = model->Materials();

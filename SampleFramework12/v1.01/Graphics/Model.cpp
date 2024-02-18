@@ -180,7 +180,7 @@ void Mesh::InitFromAssimpMesh(const aiMesh& assimpMesh, float sceneScale, MeshVe
     }
 
     const uint64 numSubsets = 1;
-    meshParts.Init(1);
+    meshParts.Init(numSubsets);
     MeshPart& part = meshParts[0];
     part.IndexStart = 0;
     part.IndexCount = numIndices;
@@ -288,7 +288,6 @@ void Mesh::InitBox(const Float3& dimensions, const Float3& position,
     dstIndices[iIdx++] = 20 + 3;
     dstIndices[iIdx++] = 20 + 0;
 
-    const uint32 indexSize = 2;
     indexType = IndexType::Index16Bit;
 
     numVertices = uint32(NumBoxVerts);
@@ -328,7 +327,6 @@ void Mesh::InitPlane(const Float2& dimensions, const Float3& position, const Qua
     dstIndices[iIdx++] = 3;
     dstIndices[iIdx++] = 0;
 
-    const uint32 indexSize = 2;
     indexType = IndexType::Index16Bit;
 
     numVertices = uint32(NumPlaneVerts);
