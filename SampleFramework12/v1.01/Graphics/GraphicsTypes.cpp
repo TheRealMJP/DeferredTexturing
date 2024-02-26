@@ -542,14 +542,13 @@ void StructuredBuffer::Initialize(const StructuredBufferInit& init)
 
             CounterUAV = DX12::UAVDescriptorHeap.AllocatePersistent().Handles[0];
 
-            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = { };
             uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-            uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+            uavDesc.Format = DXGI_FORMAT_R32_UINT;
             uavDesc.Buffer.CounterOffsetInBytes = 0;
             uavDesc.Buffer.FirstElement = 0;
             uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
             uavDesc.Buffer.NumElements = 1;
-            uavDesc.Buffer.StructureByteStride = sizeof(uint32);
             DX12::Device->CreateUnorderedAccessView(counterRes, nullptr, &uavDesc, CounterUAV);
         }
 
