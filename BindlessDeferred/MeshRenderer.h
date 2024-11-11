@@ -96,7 +96,7 @@ public:
 protected:
 
     void LoadShaders();
-    void RenderDepth(ID3D12GraphicsCommandList* cmdList, const Camera& camera, ID3D12PipelineState* pso, uint64 numVisible);
+    void RenderDepth(ID3D12GraphicsCommandList* cmdList, const Camera& camera, ID3D12PipelineState* pso, ID3D12PipelineState* alphaTestPSO, uint64 numVisible);
 
     const Model* model = nullptr;
 
@@ -105,19 +105,29 @@ protected:
     Float4x4 spotLightShadowMatrices[AppSettings::MaxSpotLights];
 
     StructuredBuffer materialTextureIndices;
+    Array<bool> materialHasAlphaTest;
 
     CompiledShaderPtr meshVS;
     CompiledShaderPtr meshPSForward;
+    CompiledShaderPtr meshPSForwardAlphaTest;
     CompiledShaderPtr meshPSGBuffer[2];
+    CompiledShaderPtr meshPSGBufferAlphaTest[2];
     ID3D12PipelineState* mainPassPSO = nullptr;
+    ID3D12PipelineState* mainPassAlphaTestPSO = nullptr;
+    ID3D12PipelineState* mainPassDepthPrepassPSO = nullptr;
     ID3D12RootSignature* mainPassRootSignature = nullptr;
     ID3D12PipelineState* gBufferPSO = nullptr;
+    ID3D12PipelineState* gBufferAlphaTestPSO = nullptr;
     ID3D12RootSignature* gBufferRootSignature = nullptr;
 
     CompiledShaderPtr meshDepthVS;
+    CompiledShaderPtr meshDepthAlphaTestPS;
     ID3D12PipelineState* depthPSO = nullptr;
+    ID3D12PipelineState* depthAlphaTestPSO = nullptr;
     ID3D12PipelineState* sunShadowPSO = nullptr;
+    ID3D12PipelineState* sunShadowAlphaTestPSO = nullptr;
     ID3D12PipelineState* spotLightShadowPSO = nullptr;
+    ID3D12PipelineState* spotLightShadowAlphaTestPSO = nullptr;
     ID3D12RootSignature* depthRootSignature = nullptr;
 
     Array<DirectX::BoundingBox> meshBoundingBoxes;

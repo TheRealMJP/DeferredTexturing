@@ -8,15 +8,35 @@
 //
 //=================================================================================================
 
+#include <Quaternion.hlsl>
+#include <DescriptorTables.hlsl>
+#include "SharedTypes.h"
+
 // ================================================================================================
 // Constant buffers
 // ================================================================================================
-cbuffer VSConstants : register(b0)
+struct VSConstants
 {
     row_major float4x4 World;
 	row_major float4x4 View;
     row_major float4x4 WorldViewProjection;
-}
+};
+
+struct MatIndexConstants
+{
+    uint MaterialTextureIndicesIdx;
+    uint MatIndex;
+};
+
+ConstantBuffer<VSConstants> VSCBuffer : register(b0);
+ConstantBuffer<MatIndexConstants> MatIndexCBuffer : register(b1);
+
+//=================================================================================================
+// Resources
+//=================================================================================================
+StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffers[] : register(t0, space100);
+
+SamplerState AnisoSampler : register(s0);
 
 // ================================================================================================
 // Input/Output structs
@@ -24,11 +44,13 @@ cbuffer VSConstants : register(b0)
 struct VSInput
 {
     float4 PositionOS 		: POSITION;
+    float2 UV               : UV;
 };
 
 struct VSOutput
 {
     float4 PositionCS 		: SV_Position;
+    float2 UV               : UV;
 };
 
 // ================================================================================================
@@ -39,7 +61,8 @@ VSOutput VS(in VSInput input)
     VSOutput output;
 
     // Calc the clip-space position
-    output.PositionCS = mul(input.PositionOS, WorldViewProjection);
+    output.PositionCS = mul(input.PositionOS, VSCBuffer.WorldViewProjection);
+    output.UV = input.UV;
 
     return output;
 }
@@ -47,7 +70,12 @@ VSOutput VS(in VSInput input)
 // ================================================================================================
 // Pixel Shader
 // ================================================================================================
-float4 PS() : SV_Target
+void PS(in VSOutput input)
 {
-    return float4(0.0f, 0.0f, 0.0f, 1.0f);
+    StructuredBuffer<MaterialTextureIndices> matIndicesBuffer = MaterialIndicesBuffers[MatIndexCBuffer.MaterialTextureIndicesIdx];
+    MaterialTextureIndices matIndices = matIndicesBuffer[MatIndexCBuffer.MatIndex];
+    Texture2D AlbedoMap = Tex2DTable[matIndices.Albedo];
+    const float alpha = AlbedoMap.Sample(AnisoSampler, input.UV).w;
+    if(alpha < 0.5f)
+        discard;
 }

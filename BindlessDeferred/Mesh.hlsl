@@ -29,6 +29,7 @@ struct VSConstants
 
 struct MatIndexConstants
 {
+    uint MaterialTextureIndicesIdx;
     uint MatIndex;
 };
 
@@ -36,7 +37,6 @@ struct SRVIndexConstants
 {
     uint SunShadowMapIdx;
     uint SpotLightShadowMapIdx;
-    uint MaterialTextureIndicesIdx;
     uint DecalBufferIdx;
     uint DecalClusterBufferIdx;
     uint SpotLightClusterBufferIdx;
@@ -54,6 +54,7 @@ ConstantBuffer<SRVIndexConstants> SRVIndices : register(b4);
 //=================================================================================================
 StructuredBuffer<MaterialTextureIndices> MaterialIndicesBuffers[] : register(t0, space100);
 StructuredBuffer<Decal> DecalBuffers[] : register(t0, space101);
+StructuredBuffer<MaterialTextureIndices> MatIndicesBufferForGBuffer : register(t0);
 
 SamplerState AnisoSampler : register(s0);
 SamplerComparisonState ShadowMapSampler : register(s1);
@@ -151,12 +152,18 @@ PSOutputForward PSForward(in PSInput input)
 	float3 bitangentWS = normalize(input.BitangentWS);
 	float3x3 tangentFrame = float3x3(tangentWS, bitangentWS, vtxNormalWS);
 
-    StructuredBuffer<MaterialTextureIndices> matIndicesBuffer = MaterialIndicesBuffers[SRVIndices.MaterialTextureIndicesIdx];
+    StructuredBuffer<MaterialTextureIndices> matIndicesBuffer = MaterialIndicesBuffers[MatIndexCBuffer.MaterialTextureIndicesIdx];
     MaterialTextureIndices matIndices = matIndicesBuffer[MatIndexCBuffer.MatIndex];
     Texture2D AlbedoMap = Tex2DTable[matIndices.Albedo];
     Texture2D NormalMap = Tex2DTable[matIndices.Normal];
     Texture2D RoughnessMap = Tex2DTable[matIndices.Roughness];
     Texture2D MetallicMap = Tex2DTable[matIndices.Metallic];
+
+    #if AlphaTest_
+        const float alpha = AlbedoMap.Sample(AnisoSampler, input.UV).w;
+        if(alpha < 0.5f)
+            discard;
+    #endif
 
     ShadingInput shadingInput;
     shadingInput.PositionSS = uint2(input.PositionSS.xy);
@@ -233,6 +240,15 @@ PSOutputGBuffer PSGBuffer(in PSInput input)
 
     #if OutputUVGradients_
         output.UVGradients = float4(ddx_fine(input.UV), ddy_fine(input.UV));
+    #endif
+
+    #if AlphaTest_
+        StructuredBuffer<MaterialTextureIndices> matIndicesBuffer = MaterialIndicesBuffers[MatIndexCBuffer.MaterialTextureIndicesIdx];
+        MaterialTextureIndices matIndices = matIndicesBuffer[MatIndexCBuffer.MatIndex];
+        Texture2D AlbedoMap = Tex2DTable[matIndices.Albedo];
+        const float alpha = AlbedoMap.Sample(AnisoSampler, input.UV).w;
+        if(alpha < 0.5f)
+            discard;
     #endif
 
     return output;
