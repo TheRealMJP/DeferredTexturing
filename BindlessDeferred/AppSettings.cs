@@ -82,7 +82,7 @@ public class Settings
         bool RenderLights = true;
 
         [HelpText("Enable or disable applying decals in the main pass")]
-        bool RenderDecals = true;
+        bool RenderDecals = false;
 
         Button ClearDecals;
 

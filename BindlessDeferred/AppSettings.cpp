@@ -114,7 +114,7 @@ namespace AppSettings
         RenderLights.Initialize("RenderLights", "Scene", "Render Lights", "Enable or disable deferred light rendering", true);
         Settings.AddSetting(&RenderLights);
 
-        RenderDecals.Initialize("RenderDecals", "Scene", "Render Decals", "Enable or disable applying decals in the main pass", true);
+        RenderDecals.Initialize("RenderDecals", "Scene", "Render Decals", "Enable or disable applying decals in the main pass", false);
         Settings.AddSetting(&RenderDecals);
 
         ClearDecals.Initialize("ClearDecals", "Scene", "Clear Decals", "");
